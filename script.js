@@ -217,12 +217,12 @@ function exportToExcel() {
 
         // Set column widths for better readability
         const columnWidths = [
-            { wch: 8 },   // No
+            { wch: 5 },   // No
             { wch: 20 },  // Kategori
-            { wch: 35 },  // Audit
-            { wch: 15 },  // Value
-            { wch: 15 },  // Nilai
-            { wch: 30 }   // Keterangan
+            { wch: 30 },  // Audit
+            { wch: 12 },  // Value
+            { wch: 12 },  // Nilai
+            { wch: 25 }   // Keterangan
         ];
         worksheet['!cols'] = columnWidths;
 
@@ -234,15 +234,74 @@ function exportToExcel() {
             { s: { r: 3, c: 0 }, e: { r: 3, c: 5 } }  // Row 4: Style
         ];
 
-        // Create table range for Excel Table formatting
-        const tableRange = `A5:F${excelData.length}`;
-        
-        // Add table formatting (this creates actual Excel table)
-        if (data.auditItems.length > 0) {
-            worksheet['!ref'] = `A1:F${excelData.length}`;
-            
-            // Add autofilter to header row (row 5)
-            worksheet['!autofilter'] = { ref: `A5:F${excelData.length}` };
+        // Style the header information (rows 1-4)
+        const headerStyle = {
+            font: { bold: true, size: 12 },
+            alignment: { horizontal: 'left', vertical: 'center' },
+            fill: { fgColor: { rgb: 'E3F2FD' } },
+            border: {
+                top: { style: 'thin' },
+                bottom: { style: 'thin' },
+                left: { style: 'thin' },
+                right: { style: 'thin' }
+            }
+        };
+
+        // Apply header styles
+        for (let row = 0; row < 4; row++) {
+            const cellRef = XLSX.utils.encode_cell({ r: row, c: 0 });
+            if (!worksheet[cellRef]) worksheet[cellRef] = {};
+            worksheet[cellRef].s = headerStyle;
+        }
+
+        // Style the table header (row 5)
+        const tableHeaderStyle = {
+            font: { bold: true, color: { rgb: 'FFFFFF' } },
+            fill: { fgColor: { rgb: '2196F3' } },
+            alignment: { horizontal: 'center', vertical: 'center' },
+            border: {
+                top: { style: 'thin' },
+                bottom: { style: 'thin' },
+                left: { style: 'thin' },
+                right: { style: 'thin' }
+            }
+        };
+
+        // Apply table header styles
+        for (let col = 0; col < 6; col++) {
+            const cellRef = XLSX.utils.encode_cell({ r: 4, c: col });
+            if (!worksheet[cellRef]) worksheet[cellRef] = {};
+            worksheet[cellRef].s = tableHeaderStyle;
+        }
+
+        // Style data rows with alternating colors
+        const evenRowStyle = {
+            fill: { fgColor: { rgb: 'F8F9FA' } },
+            border: {
+                top: { style: 'thin' },
+                bottom: { style: 'thin' },
+                left: { style: 'thin' },
+                right: { style: 'thin' }
+            }
+        };
+
+        const oddRowStyle = {
+            fill: { fgColor: { rgb: 'FFFFFF' } },
+            border: {
+                top: { style: 'thin' },
+                bottom: { style: 'thin' },
+                left: { style: 'thin' },
+                right: { style: 'thin' }
+            }
+        };
+
+        // Apply data row styles
+        for (let row = 5; row < excelData.length; row++) {
+            for (let col = 0; col < 6; col++) {
+                const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
+                if (!worksheet[cellRef]) worksheet[cellRef] = {};
+                worksheet[cellRef].s = (row - 5) % 2 === 0 ? evenRowStyle : oddRowStyle;
+            }
         }
 
         // Add worksheet to workbook
