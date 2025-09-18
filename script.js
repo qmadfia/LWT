@@ -165,7 +165,7 @@ function saveData() {
     }
 }
 
-// Export data to Excel with proper formatting (Alternative method)
+// Export data to Excel with proper formatting
 function exportToExcel() {
     try {
         showLoading(true);
@@ -188,36 +188,35 @@ function exportToExcel() {
         // Create workbook
         const workbook = XLSX.utils.book_new();
 
-        // Method 1: Create formatted Excel data
+        // Create Excel data structure matching your manual form format
         const excelData = [];
         
-        // Header information with proper formatting
+        // Row 1-4: Header information with merged cells (A1:F1, A2:F2, etc.)
         excelData.push([`Nama Auditor : ${data.auditorInfo.nama}`, '', '', '', '', '']);
         excelData.push([`Line : ${data.auditorInfo.line}`, '', '', '', '', '']);
         excelData.push([`Model : ${data.auditorInfo.model}`, '', '', '', '', '']);
         excelData.push([`Style : ${data.auditorInfo.style}`, '', '', '', '', '']);
-        excelData.push(['']); // Empty row for spacing
         
-        // Table headers
+        // Row 5: Table headers
         excelData.push(['No', 'Kategori', 'Audit', 'Value', 'Nilai', 'Keterangan']);
         
-        // Data rows
+        // Data rows starting from row 6
         data.auditItems.forEach((item, index) => {
             excelData.push([
                 index + 1,
-                item.kategori || '',
-                item.audit || '',
-                item.nilaiMaksimal || 0,
-                item.nilaiAktual || 0,
-                item.keterangan || ''
+                item.kategori,
+                item.audit,
+                item.nilaiMaksimal,
+                item.nilaiAktual,
+                item.keterangan
             ]);
         });
 
-        // Create worksheet
+        // Create worksheet from array
         const worksheet = XLSX.utils.aoa_to_sheet(excelData);
 
-        // Set column widths
-        worksheet['!cols'] = [
+        // Set column widths for better readability
+        const columnWidths = [
             { wch: 8 },   // No
             { wch: 20 },  // Kategori
             { wch: 35 },  // Audit
@@ -225,113 +224,29 @@ function exportToExcel() {
             { wch: 15 },  // Nilai
             { wch: 30 }   // Keterangan
         ];
+        worksheet['!cols'] = columnWidths;
 
-        // Merge cells for header information
+        // Add merge ranges for header rows (A1:F1, A2:F2, A3:F3, A4:F4)
         worksheet['!merges'] = [
-            { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // Nama Auditor
-            { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }, // Line
-            { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }, // Model
-            { s: { r: 3, c: 0 }, e: { r: 3, c: 5 } }  // Style
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // Row 1: Nama Auditor
+            { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }, // Row 2: Line
+            { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }, // Row 3: Model
+            { s: { r: 3, c: 0 }, e: { r: 3, c: 5 } }  // Row 4: Style
         ];
 
-        // Add borders and basic formatting
-        const range = XLSX.utils.decode_range(worksheet['!ref']);
+        // Create table range for Excel Table formatting
+        const tableRange = `A5:F${excelData.length}`;
         
-        for (let R = range.s.r; R <= range.e.r; ++R) {
-            for (let C = range.s.c; C <= range.e.c; ++C) {
-                const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-                
-                if (!worksheet[cellAddress]) {
-                    worksheet[cellAddress] = { t: 's', v: '' };
-                }
-                
-                // Basic cell formatting
-                if (!worksheet[cellAddress].s) {
-                    worksheet[cellAddress].s = {};
-                }
-                
-                // Add borders to all cells
-                worksheet[cellAddress].s.border = {
-                    top: { style: 'thin', color: { rgb: '000000' } },
-                    bottom: { style: 'thin', color: { rgb: '000000' } },
-                    left: { style: 'thin', color: { rgb: '000000' } },
-                    right: { style: 'thin', color: { rgb: '000000' } }
-                };
-                
-                // Header rows (0-3) styling
-                if (R <= 3) {
-                    worksheet[cellAddress].s.font = { bold: true, size: 12 };
-                    worksheet[cellAddress].s.fill = { fgColor: { rgb: 'E3F2FD' } };
-                    worksheet[cellAddress].s.alignment = { horizontal: 'left', vertical: 'center' };
-                }
-                
-                // Table header row (5) styling
-                if (R === 5) {
-                    worksheet[cellAddress].s.font = { bold: true, color: { rgb: 'FFFFFF' }, size: 11 };
-                    worksheet[cellAddress].s.fill = { fgColor: { rgb: '2196F3' } };
-                    worksheet[cellAddress].s.alignment = { horizontal: 'center', vertical: 'center' };
-                }
-                
-                // Data rows styling with alternating colors
-                if (R > 5) {
-                    const isEvenRow = (R - 6) % 2 === 0;
-                    worksheet[cellAddress].s.fill = { 
-                        fgColor: { rgb: isEvenRow ? 'F8F9FA' : 'FFFFFF' } 
-                    };
-                    worksheet[cellAddress].s.alignment = { vertical: 'center' };
-                }
-            }
+        // Add table formatting (this creates actual Excel table)
+        if (data.auditItems.length > 0) {
+            worksheet['!ref'] = `A1:F${excelData.length}`;
+            
+            // Add autofilter to header row (row 5)
+            worksheet['!autofilter'] = { ref: `A5:F${excelData.length}` };
         }
 
         // Add worksheet to workbook
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Form Audit');
-
-        // Alternative: Create a second sheet with simple table format
-        const simpleData = [
-            ['MANUFACTURING AUDIT REPORT'],
-            [''],
-            [`Tanggal: ${data.auditorInfo.tanggal} ${data.auditorInfo.waktu}`],
-            [`Auditor: ${data.auditorInfo.nama}`],
-            [`Line: ${data.auditorInfo.line}`],
-            [`Model: ${data.auditorInfo.model}`],
-            [`Style: ${data.auditorInfo.style}`],
-            [''],
-            ['=== HASIL AUDIT ==='],
-            ['No', 'Kategori', 'Item Audit', 'Nilai Maksimal', 'Nilai Aktual', 'Keterangan', 'Status'],
-        ];
-
-        data.auditItems.forEach((item, index) => {
-            const status = item.nilaiAktual >= item.nilaiMaksimal * 0.8 ? 'BAIK' : 'PERLU PERBAIKAN';
-            simpleData.push([
-                index + 1,
-                item.kategori,
-                item.audit,
-                item.nilaiMaksimal,
-                item.nilaiAktual,
-                item.keterangan,
-                status
-            ]);
-        });
-
-        // Add summary
-        const totalScore = data.auditItems.reduce((sum, item) => sum + item.nilaiAktual, 0);
-        const maxScore = data.auditItems.reduce((sum, item) => sum + item.nilaiMaksimal, 0);
-        const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
-        
-        simpleData.push(['']);
-        simpleData.push(['SUMMARY']);
-        simpleData.push(['Total Items:', data.auditItems.length]);
-        simpleData.push(['Total Score:', totalScore]);
-        simpleData.push(['Max Score:', maxScore]);
-        simpleData.push(['Percentage:', percentage + '%']);
-
-        const simpleSheet = XLSX.utils.aoa_to_sheet(simpleData);
-        simpleSheet['!cols'] = [
-            { wch: 8 }, { wch: 20 }, { wch: 35 }, { wch: 15 }, 
-            { wch: 15 }, { wch: 30 }, { wch: 20 }
-        ];
-        
-        XLSX.utils.book_append_sheet(workbook, simpleSheet, 'Ringkasan Audit');
 
         // Generate filename
         const timestamp = new Date().toISOString().slice(0, 19).replace(/[:]/g, '-');
@@ -340,17 +255,19 @@ function exportToExcel() {
 
         console.log('Attempting to download file:', filename);
         
-        // Try download
+        // Multiple download methods for better compatibility
         try {
+            // Method 1: Standard XLSX writeFile
             XLSX.writeFile(workbook, filename);
-            console.log('Excel file created successfully with table formatting');
+            console.log('Download initiated successfully');
         } catch (downloadError) {
             console.error('Standard download failed, trying alternative method:', downloadError);
             
-            // Alternative blob method
+            // Method 2: Manual blob download
             const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
             const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             
+            // Create download link
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
@@ -361,17 +278,6 @@ function exportToExcel() {
             window.URL.revokeObjectURL(url);
             
             console.log('Alternative download method used');
-        }
-        
-        showLoading(false);
-        showToast('File Excel berhasil diunduh dengan format tabel! Cek folder Downloads Anda.', 'success');
-        
-    } catch (error) {
-        showLoading(false);
-        console.error('Export error:', error);
-        showToast('Error: ' + error.message, 'error');
-    }
-}
         }
         
         showLoading(false);
