@@ -138,3 +138,79 @@ tbody tr:nth-child(even) { background-color: var(--light-color); }
     .table-wrapper { max-height: 400px; }
     th, td { font-size: 0.9em; padding: 8px; }
 }
+
+/* ... (Semua CSS dari versi sebelumnya tetap sama) ... */
+/* Tambahkan atau modifikasi gaya berikut */
+
+/* Kolom Tabel */
+.col-pair { width: 8%; }
+.col-status { width: 18%; }
+.col-defect { width: 34%; }
+.col-photo { width: 25%; } /* Beri ruang lebih untuk foto */
+.col-action { width: 15%; }
+
+/* Gaya untuk Fitur Foto */
+.photo-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.photo-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.thumbnail-wrapper {
+    position: relative;
+    width: 60px;
+    height: 60px;
+}
+
+.thumbnail-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.remove-photo-btn {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background-color: var(--danger-color);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    line-height: 1;
+}
+
+.add-photo-btn {
+    padding: 6px 10px;
+    font-size: 0.9em;
+    cursor: pointer;
+    border-radius: 4px;
+    border: 1px solid var(--primary-color);
+    background-color: transparent;
+    color: var(--primary-color);
+}
+.add-photo-btn:hover {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.photo-feedback {
+    font-size: 0.8em;
+    color: var(--secondary-color);
+    font-style: italic;
+}
