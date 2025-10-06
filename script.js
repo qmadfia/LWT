@@ -1,6 +1,6 @@
 /**
  * @file script.js
- * @description Main logic for the Line Walk Through application (V2).
+ * @description Main logic for the Line Walk Through application (V2 - Corrected).
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -40,9 +40,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function populateLineDropdown() {
-        // (Sama seperti sebelumnya)
-        for (let i = 101; i <= 116; i++) DOMElements.line.add(new Option(i, i));
-        for (let i = 201; i <= 216; i++) DOMElements.line.add(new Option(i, i));
+        const lineSelect = DOMElements.line;
+        if (lineSelect.options.length > 1) return; // Mencegah duplikasi
+        for (let i = 101; i <= 116; i++) lineSelect.add(new Option(i, i));
+        for (let i = 201; i <= 216; i++) lineSelect.add(new Option(i, i));
     }
 
     function generateDataEntryRows() {
@@ -69,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </td>
                 <td class="col-photo">
                     <button class="table-action-btn camera-btn" title="Tambah Foto Defect">📷</button>
-                    <input type="file" accept="image/*" class="hidden-file-input" capture>
+                    <input type="file" accept="image/*" class="hidden-file-input" capture style="display:none;">
                 </td>
                 <td class="col-action">
                     <button class="table-action-btn delete-row-btn" title="Hapus Data Baris Ini">🗑️</button>
@@ -83,30 +84,29 @@ document.addEventListener('DOMContentLoaded', () => {
     // EVENT LISTENERS
     // =========================================================================
     function setupEventListeners() {
-        // Event untuk autocomplete
         DOMElements.styleNumberInput.addEventListener('input', handleAutocompleteInput);
         DOMElements.autocompleteResults.addEventListener('click', handleAutocompleteSelect);
-        document.addEventListener('click', (e) => { // Sembunyikan jika klik di luar
+        document.addEventListener('click', (e) => {
             if (!e.target.closest('.autocomplete-container')) {
                 DOMElements.autocompleteResults.style.display = 'none';
             }
         });
 
-        // Event delegation untuk tabel
         DOMElements.dataEntryBody.addEventListener('change', handleTableChange);
         DOMElements.dataEntryBody.addEventListener('click', handleTableClick);
 
-        // Event untuk tombol utama dan modal
         DOMElements.saveButton.addEventListener('click', handleSaveValidation);
         DOMElements.modalConfirmBtn.addEventListener('click', () => currentModalAction.onConfirm?.());
         DOMElements.modalCancelBtn.addEventListener('click', () => currentModalAction.onCancel?.());
+
+        // Listener untuk daftar file yang disimpan
+        DOMElements.savedFilesList.addEventListener('click', handleSavedFilesActions);
     }
 
     // =========================================================================
-    // HANDLER UNTUK FITUR BARU
+    // HANDLER UNTUK FITUR-FITUR
     // =========================================================================
 
-    // --- Autocomplete Style Number ---
     function handleAutocompleteInput(e) {
         const value = e.target.value.toLowerCase();
         const resultsContainer = DOMElements.autocompleteResults;
@@ -132,17 +132,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleAutocompleteSelect(e) {
-        if (e.target.dataset.value) {
-            const selectedStyle = e.target.dataset.value;
+        const target = e.target.closest('div[data-value]');
+        if (target) {
+            const selectedStyle = target.dataset.value;
             DOMElements.styleNumberInput.value = selectedStyle;
             DOMElements.model.value = styleModelMap[selectedStyle] || '';
             DOMElements.autocompleteResults.style.display = 'none';
         }
     }
 
-    // --- Handler Aksi di Tabel ---
     function handleTableChange(e) {
-        // Perubahan pada dropdown OK/NG
         if (e.target.classList.contains('status-select')) {
             const select = e.target;
             const tr = select.closest('tr');
@@ -156,15 +155,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (select.value === 'NG') {
                 defectContainer.classList.remove('disabled');
                 defectContainer.classList.add('enabled');
-                placeholder.textContent = 'Klik untuk pilih defect...';
+                if(placeholder) placeholder.textContent = 'Klik untuk pilih defect...';
             } else {
                 defectContainer.classList.remove('enabled');
                 defectContainer.classList.add('disabled');
-                placeholder.textContent = "Pilih status 'NG' untuk mengisi";
-                resetDefectsForRow(tr); // Hapus defect jika status kembali ke OK
+                if(placeholder) placeholder.textContent = "Pilih status 'NG' untuk mengisi";
+                resetDefectsForRow(tr);
             }
         }
-        // Perubahan pada input file (foto)
         if (e.target.classList.contains('hidden-file-input')) {
             handleImageUpload(e);
         }
@@ -172,11 +170,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleTableClick(e) {
         const target = e.target;
-        // Klik tombol kamera
         if (target.classList.contains('camera-btn')) {
-            target.nextElementSibling.click(); // Klik input file yang tersembunyi
+            target.nextElementSibling.click();
         }
-        // Klik tombol hapus baris
         if (target.classList.contains('delete-row-btn')) {
             const tr = target.closest('tr');
             const pairNum = tr.dataset.pairNumber;
@@ -191,14 +187,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
-        // Klik container defect
         if (target.closest('.defect-input-container.enabled')) {
             currentRowForDefectModal = target.closest('tr');
             showDefectSelectionModal(currentRowForDefectModal);
         }
     }
     
-    // --- Manajemen Foto ---
     function handleImageUpload(e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -207,20 +201,22 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.onload = (event) => {
             const base64String = event.target.result;
             const tr = e.target.closest('tr');
-            tr.dataset.photo = base64String; // Simpan data foto di dataset
+            tr.dataset.photo = base64String;
             tr.querySelector('.camera-btn').classList.add('has-photo');
         };
         reader.readAsDataURL(file);
     }
     
-    // --- Reset Baris ---
     function resetRow(tr) {
-        tr.querySelector('.status-select').value = "";
-        tr.querySelector('.status-select').className = 'status-select';
+        const statusSelect = tr.querySelector('.status-select');
+        statusSelect.value = "";
+        statusSelect.className = 'status-select';
+        
         resetDefectsForRow(tr);
         const defectContainer = tr.querySelector('.defect-input-container');
         defectContainer.className = 'defect-input-container disabled';
-        defectContainer.querySelector('.placeholder-text').textContent = "Pilih status 'NG' untuk mengisi";
+        updateDefectTags(tr);
+
         delete tr.dataset.photo;
         tr.querySelector('.camera-btn').classList.remove('has-photo');
         tr.querySelector('.hidden-file-input').value = "";
@@ -231,7 +227,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateDefectTags(tr);
     }
 
-    // --- Modal Defect Interaktif ---
     function showDefectSelectionModal(tr) {
         const currentDefects = JSON.parse(tr.dataset.defects || '[]');
         let optionsHTML = defectTypes.map(defect => `
@@ -261,7 +256,6 @@ document.addEventListener('DOMContentLoaded', () => {
             },
         });
         
-        // Tambahkan fungsi search ke modal
         document.querySelector('#defect-selection-modal .search-bar').addEventListener('input', (e) => {
             const searchTerm = e.target.value.toLowerCase();
             document.querySelectorAll('#defect-selection-modal label').forEach(label => {
@@ -290,7 +284,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // --- Validasi Simpan ---
     function handleSaveValidation() {
         if (!DOMElements.validationCategory.value || !DOMElements.styleNumberInput.value || !DOMElements.line.value) {
             alert('Harap lengkapi semua informasi di bagian atas (Kategori, Style, Line).');
@@ -305,8 +298,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 confirmText: 'Lanjutkan',
                 cancelText: 'Batal',
                 onConfirm: () => {
-                    saveData();
                     hideModal();
+                    saveData();
                 }
             });
         } else {
@@ -315,24 +308,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // FUNGSI INTI (Simpan, Download, Hapus, dll)
+    // FUNGSI INTI (Simpan, Download, Hapus)
     // =========================================================================
 
     function saveData() {
-        // (Logika pengumpulan data diperbarui untuk menyertakan foto)
-        const headerData = { /* ... sama seperti sebelumnya ... */ };
+        const headerData = {
+            date: new Date().toISOString().split('T')[0],
+            validationCategory: DOMElements.validationCategory.value,
+            styleNumber: DOMElements.styleNumberInput.value,
+            model: DOMElements.model.value,
+            line: DOMElements.line.value
+        };
+
         const pairsData = [];
         DOMElements.dataEntryBody.querySelectorAll('tr').forEach(tr => {
             pairsData.push({
                 pairNumber: parseInt(tr.dataset.pairNumber),
                 status: tr.querySelector('.status-select').value,
                 defects: JSON.parse(tr.dataset.defects || '[]'),
-                photo: tr.dataset.photo || null // Ambil data foto dari dataset
+                photo: tr.dataset.photo || null
             });
         });
         
+        const categoryForName = headerData.validationCategory || 'DATA';
+        const dateForName = headerData.date;
         const fileId = `lwt_${Date.now()}`;
-        const fileName = `LWT-${headerData.validationCategory || 'DATA'}-${headerData.date}`;
+        const fileName = `LWT-${categoryForName}-${dateForName}`;
         const fileData = { id: fileId, name: fileName, header: headerData, pairs: pairsData };
 
         const existingData = getSavedData();
@@ -340,28 +341,133 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(existingData));
         
         alert(`Data berhasil disimpan: ${fileName}`);
-        location.reload(); // Reload halaman untuk reset form
+        
+        renderSavedFiles();
+        resetFullForm();
+    }
+
+    function resetFullForm() {
+        DOMElements.validationCategory.value = '';
+        DOMElements.styleNumberInput.value = '';
+        DOMElements.model.value = '';
+        DOMElements.line.value = '';
+        DOMElements.dataEntryBody.querySelectorAll('tr').forEach(resetRow);
     }
     
-    function generateExcel(fileData) {
-        // (Logika Excel diperbarui untuk menyertakan kolom foto)
-        const excelHeaders = [ /* ..., */ 'OK/NG', 'Photo Attached', 'Defect type 1', /* ... */ ];
-        const dataForSheet = [excelHeaders];
-        
-        fileData.pairs.forEach(pair => {
-            const row = [ /* ..., */ pair.status, pair.photo ? 'Yes' : 'No'];
-            for (let i = 0; i < 10; i++) row.push(pair.defects[i] || '');
-            dataForSheet.push(row);
-        });
+    function handleSavedFilesActions(e) {
+        const target = e.target;
+        const fileId = target.dataset.id;
+        if (!fileId) return;
 
-        // (Logika pembuatan SheetJS tetap sama)
+        if (target.classList.contains('download-btn')) {
+            handleDownload(fileId);
+        } else if (target.classList.contains('delete-btn')) {
+            showModal({
+                title: 'Konfirmasi Hapus File',
+                body: `<p>Apakah Anda yakin ingin menghapus file ini secara permanen?</p>`,
+                confirmText: 'Ya, Hapus',
+                cancelText: 'Batal',
+                onConfirm: () => {
+                    deleteDataFromStorage(fileId);
+                    renderSavedFiles();
+                    hideModal();
+                }
+            });
+        }
+    }
+
+    function handleDownload(fileId) {
+        const savedData = getSavedData();
+        const fileData = savedData.find(item => item.id === fileId);
+        if (fileData) {
+            generateExcel(fileData);
+        } else {
+            alert('Data file tidak ditemukan!');
+        }
+    }
+    
+    function renderSavedFiles() {
+        const data = getSavedData();
+        const listElement = DOMElements.savedFilesList;
+        listElement.innerHTML = '';
+
+        if (data.length === 0) {
+            listElement.innerHTML = '<li>Belum ada data yang tersimpan.</li>';
+            return;
+        }
+
+        data.forEach(file => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <span class="file-name">${file.name}</span>
+                <div class="file-actions">
+                    <button class="btn btn-primary download-btn" data-id="${file.id}">Download</button>
+                    <button class="btn btn-danger delete-btn" data-id="${file.id}">Hapus</button>
+                </div>
+            `;
+            listElement.appendChild(li);
+        });
+    }
+
+    function deleteDataFromStorage(fileId) {
+        let existingData = getSavedData();
+        const updatedData = existingData.filter(item => item.id !== fileId);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData));
     }
     
     function getSavedData() {
         return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
     }
 
-    // (Fungsi renderSavedFiles, deleteDataFromStorage, dll tetap sama)
+    function generateExcel(fileData) {
+        const header = fileData.header;
+        const pairs = fileData.pairs;
+
+        const excelHeaders = [
+            'Date', 'Validation Category', 'Style Number', 'Model', 'Line',
+            'Pair Number', 'OK/NG', 'Photo Attached',
+            'Defect type 1', 'Defect type 2', 'Defect type 3', 'Defect type 4', 'Defect type 5',
+            'Defect type 6', 'Defect type 7', 'Defect type 8', 'Defect type 9', 'Defect type 10'
+        ];
+        
+        const dataForSheet = [excelHeaders];
+
+        pairs.forEach(pair => {
+            const row = [
+                header.date,
+                header.validationCategory,
+                header.styleNumber,
+                header.model,
+                header.line,
+                pair.pairNumber,
+                pair.status,
+                pair.photo ? 'Yes' : 'No'
+            ];
+            
+            for (let i = 0; i < 10; i++) {
+                row.push(pair.defects[i] || '');
+            }
+            dataForSheet.push(row);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
+        const headerStyle = {
+            font: { bold: true },
+            fill: { fgColor: { rgb: "FF007BFF" } },
+            alignment: { horizontal: "center", vertical: "center" }
+        };
+
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const address = XLSX.utils.encode_cell({ r: 0, c: C });
+            if (!ws[address]) continue;
+            ws[address].s = headerStyle;
+        }
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'LWT Data');
+        XLSX.writeFile(wb, `${fileData.name}.xlsx`);
+    }
 
     // =========================================================================
     // UTILITY MODAL DINAMIS
