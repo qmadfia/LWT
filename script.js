@@ -1,6 +1,6 @@
 /**
  * @file script.js
- * @description Main logic for the Line Walk Through application (V2 - Corrected).
+ * @description Main logic for the Line Walk Through application (V3 - Final).
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -9,8 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
     const STORAGE_KEY = 'lineWalkThroughData';
     const TOTAL_PAIRS = 20;
-    let currentRowForDefectModal = null; // Menyimpan baris yg sedang aktif untuk modal defect
-    let currentModalAction = { onConfirm: null, onCancel: null }; // Menyimpan aksi modal
+    let currentModalAction = { onConfirm: null, onCancel: null };
 
     const DOMElements = {
         validationCategory: document.getElementById('validation-category'),
@@ -24,13 +23,12 @@ document.addEventListener('DOMContentLoaded', () => {
         modal: document.getElementById('app-modal'),
         modalTitle: document.getElementById('modal-title'),
         modalBody: document.getElementById('modal-body'),
-        modalActions: document.getElementById('modal-actions'),
         modalConfirmBtn: document.getElementById('modal-confirm-btn'),
         modalCancelBtn: document.getElementById('modal-cancel-btn'),
     };
 
     // =========================================================================
-    // FUNGSI INISIALISASI
+    // FUNGSI INISIALISASI APLIKASI
     // =========================================================================
     function initializeApp() {
         populateLineDropdown();
@@ -41,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function populateLineDropdown() {
         const lineSelect = DOMElements.line;
-        if (lineSelect.options.length > 1) return; // Mencegah duplikasi
+        if (lineSelect.options.length > 1) return;
         for (let i = 101; i <= 116; i++) lineSelect.add(new Option(i, i));
         for (let i = 201; i <= 216; i++) lineSelect.add(new Option(i, i));
     }
@@ -52,6 +50,8 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = 1; i <= TOTAL_PAIRS; i++) {
             const tr = document.createElement('tr');
             tr.dataset.pairNumber = i;
+            tr.dataset.photos = '[]';
+            tr.dataset.defects = '[]';
             tr.innerHTML = `
                 <td class="col-pair">${i}</td>
                 <td class="col-status">
@@ -62,15 +62,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     </select>
                 </td>
                 <td class="col-defect">
-                    <div class="defect-input-container disabled" data-pair="${i}">
+                    <div class="defect-input-container disabled">
                         <div class="defect-tags-wrapper">
-                            <span class="placeholder-text">Pilih status 'NG' untuk mengisi</span>
+                            <span class="placeholder-text">Pilih 'NG' untuk mengisi</span>
                         </div>
                     </div>
                 </td>
                 <td class="col-photo">
-                    <button class="table-action-btn camera-btn" title="Tambah Foto Defect">📷</button>
-                    <input type="file" accept="image/*" class="hidden-file-input" capture style="display:none;">
+                    <div class="photo-container">
+                        <div class="photo-gallery"></div>
+                        <span class="photo-feedback">Belum ada foto.</span>
+                        <button class="add-photo-btn" style="display:none;">+ Tambah Foto</button>
+                        <input type="file" accept="image/*" class="hidden-file-input" multiple style="display:none;">
+                    </div>
                 </td>
                 <td class="col-action">
                     <button class="table-action-btn delete-row-btn" title="Hapus Data Baris Ini">🗑️</button>
@@ -91,22 +95,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 DOMElements.autocompleteResults.style.display = 'none';
             }
         });
-
         DOMElements.dataEntryBody.addEventListener('change', handleTableChange);
         DOMElements.dataEntryBody.addEventListener('click', handleTableClick);
-
         DOMElements.saveButton.addEventListener('click', handleSaveValidation);
         DOMElements.modalConfirmBtn.addEventListener('click', () => currentModalAction.onConfirm?.());
         DOMElements.modalCancelBtn.addEventListener('click', () => currentModalAction.onCancel?.());
-
-        // Listener untuk daftar file yang disimpan
         DOMElements.savedFilesList.addEventListener('click', handleSavedFilesActions);
     }
 
     // =========================================================================
     // HANDLER UNTUK FITUR-FITUR
     // =========================================================================
-
     function handleAutocompleteInput(e) {
         const value = e.target.value.toLowerCase();
         const resultsContainer = DOMElements.autocompleteResults;
@@ -115,9 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
             resultsContainer.style.display = 'none';
             return;
         }
-
         const filteredKeys = Object.keys(styleModelMap).filter(key => key.toLowerCase().includes(value));
-
         if (filteredKeys.length > 0) {
             filteredKeys.forEach(key => {
                 const item = document.createElement('div');
@@ -142,69 +139,100 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleTableChange(e) {
-        if (e.target.classList.contains('status-select')) {
-            const select = e.target;
-            const tr = select.closest('tr');
+        const target = e.target;
+        if (target.classList.contains('status-select')) {
+            const tr = target.closest('tr');
+            const addPhotoButton = tr.querySelector('.add-photo-btn');
             const defectContainer = tr.querySelector('.defect-input-container');
-            const placeholder = defectContainer.querySelector('.placeholder-text');
-
-            select.classList.add('status-selected');
-            select.classList.toggle('status-ok', select.value === 'OK');
-            select.classList.toggle('status-ng', select.value === 'NG');
             
-            if (select.value === 'NG') {
-                defectContainer.classList.remove('disabled');
-                defectContainer.classList.add('enabled');
-                if(placeholder) placeholder.textContent = 'Klik untuk pilih defect...';
+            target.classList.add('status-selected');
+            target.classList.toggle('status-ok', target.value === 'OK');
+            target.classList.toggle('status-ng', target.value === 'NG');
+
+            if (target.value === 'NG') {
+                defectContainer.classList.replace('disabled', 'enabled');
+                defectContainer.querySelector('.placeholder-text').textContent = 'Klik untuk pilih defect...';
+                addPhotoButton.style.display = 'block';
             } else {
-                defectContainer.classList.remove('enabled');
-                defectContainer.classList.add('disabled');
-                if(placeholder) placeholder.textContent = "Pilih status 'NG' untuk mengisi";
+                defectContainer.classList.replace('enabled', 'disabled');
+                defectContainer.querySelector('.placeholder-text').textContent = "Pilih 'NG' untuk mengisi";
+                addPhotoButton.style.display = 'none';
                 resetDefectsForRow(tr);
+                resetPhotosForRow(tr);
             }
         }
-        if (e.target.classList.contains('hidden-file-input')) {
+        if (target.classList.contains('hidden-file-input')) {
             handleImageUpload(e);
         }
     }
 
     function handleTableClick(e) {
         const target = e.target;
-        if (target.classList.contains('camera-btn')) {
-            target.nextElementSibling.click();
+        if (target.classList.contains('add-photo-btn')) {
+            const fileInput = target.nextElementSibling;
+            fileInput.removeAttribute('capture');
+            fileInput.click();
+        }
+        if (target.classList.contains('remove-photo-btn')) {
+            const tr = target.closest('tr');
+            const photoIndex = parseInt(target.dataset.index);
+            removePhoto(tr, photoIndex);
         }
         if (target.classList.contains('delete-row-btn')) {
             const tr = target.closest('tr');
-            const pairNum = tr.dataset.pairNumber;
             showModal({
                 title: 'Konfirmasi Hapus',
-                body: `<p>Apakah Anda yakin hendak menghapus data inspeksi untuk <strong>Pair #${pairNum}</strong>?</p>`,
+                body: `<p>Hapus data inspeksi <strong>Pair #${tr.dataset.pairNumber}</strong>?</p>`,
                 confirmText: 'Ya, Hapus',
-                cancelText: 'Batal',
-                onConfirm: () => {
-                    resetRow(tr);
-                    hideModal();
-                }
+                onConfirm: () => { resetRow(tr); hideModal(); }
             });
         }
         if (target.closest('.defect-input-container.enabled')) {
-            currentRowForDefectModal = target.closest('tr');
-            showDefectSelectionModal(currentRowForDefectModal);
+            showDefectSelectionModal(target.closest('tr'));
         }
     }
-    
+
     function handleImageUpload(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const base64String = event.target.result;
-            const tr = e.target.closest('tr');
-            tr.dataset.photo = base64String;
-            tr.querySelector('.camera-btn').classList.add('has-photo');
-        };
-        reader.readAsDataURL(file);
+        const files = e.target.files;
+        if (!files.length) return;
+        const tr = e.target.closest('tr');
+
+        Array.from(files).forEach(file => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const base64String = event.target.result;
+                let photos = JSON.parse(tr.dataset.photos);
+                photos.push({ name: file.name, data: base64String });
+                tr.dataset.photos = JSON.stringify(photos);
+                updatePhotoGallery(tr);
+            };
+            reader.readAsDataURL(file);
+        });
+        e.target.value = '';
+    }
+
+    function updatePhotoGallery(tr) {
+        const gallery = tr.querySelector('.photo-gallery');
+        const feedback = tr.querySelector('.photo-feedback');
+        const photos = JSON.parse(tr.dataset.photos);
+        gallery.innerHTML = '';
+
+        photos.forEach((photo, index) => {
+            gallery.innerHTML += `
+                <div class="thumbnail-wrapper">
+                    <img src="${photo.data}" class="thumbnail-img" alt="thumbnail">
+                    <button class="remove-photo-btn" data-index="${index}">×</button>
+                </div>
+            `;
+        });
+        feedback.textContent = photos.length > 0 ? `${photos.length} foto diunggah.` : 'Belum ada foto.';
+    }
+
+    function removePhoto(tr, index) {
+        let photos = JSON.parse(tr.dataset.photos);
+        photos.splice(index, 1);
+        tr.dataset.photos = JSON.stringify(photos);
+        updatePhotoGallery(tr);
     }
     
     function resetRow(tr) {
@@ -212,19 +240,21 @@ document.addEventListener('DOMContentLoaded', () => {
         statusSelect.value = "";
         statusSelect.className = 'status-select';
         
-        resetDefectsForRow(tr);
-        const defectContainer = tr.querySelector('.defect-input-container');
-        defectContainer.className = 'defect-input-container disabled';
-        updateDefectTags(tr);
+        tr.querySelector('.defect-input-container').classList.replace('enabled', 'disabled');
+        tr.querySelector('.add-photo-btn').style.display = 'none';
 
-        delete tr.dataset.photo;
-        tr.querySelector('.camera-btn').classList.remove('has-photo');
-        tr.querySelector('.hidden-file-input').value = "";
+        resetDefectsForRow(tr);
+        resetPhotosForRow(tr);
     }
-    
+
     function resetDefectsForRow(tr) {
-        tr.dataset.defects = JSON.stringify([]);
+        tr.dataset.defects = '[]';
         updateDefectTags(tr);
+    }
+
+    function resetPhotosForRow(tr) {
+        tr.dataset.photos = '[]';
+        updatePhotoGallery(tr);
     }
 
     function showDefectSelectionModal(tr) {
@@ -235,7 +265,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${defect}
             </label>
         `).join('');
-
         const modalBodyHTML = `
             <div id="defect-selection-modal">
                 <input type="text" class="search-bar" placeholder="Cari tipe defect...">
@@ -246,7 +275,6 @@ document.addEventListener('DOMContentLoaded', () => {
             title: `Pilih Defect untuk Pair #${tr.dataset.pairNumber}`,
             body: modalBodyHTML,
             confirmText: 'Simpan Pilihan',
-            cancelText: 'Batal',
             onConfirm: () => {
                 const selected = [];
                 document.querySelectorAll('#defect-selection-modal input:checked').forEach(cb => selected.push(cb.value));
@@ -279,61 +307,63 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             const placeholder = document.createElement('span');
             placeholder.className = 'placeholder-text';
-            placeholder.textContent = tr.querySelector('.status-select').value === 'NG' ? 'Klik untuk pilih defect...' : "Pilih status 'NG' untuk mengisi";
+            placeholder.textContent = tr.querySelector('.status-select').value === 'NG' ? 'Klik untuk pilih defect...' : "Pilih 'NG' untuk mengisi";
             wrapper.appendChild(placeholder);
         }
     }
     
+    // =========================================================================
+    // FUNGSI SIMPAN, UNDUH, DAN MANAJEMEN DATA
+    // =========================================================================
     function handleSaveValidation() {
         if (!DOMElements.validationCategory.value || !DOMElements.styleNumberInput.value || !DOMElements.line.value) {
-            alert('Harap lengkapi semua informasi di bagian atas (Kategori, Style, Line).');
-            return;
+            return alert('Harap lengkapi semua informasi di bagian atas (Kategori, Style, Line).');
         }
-
+        for (const tr of DOMElements.dataEntryBody.querySelectorAll('tr')) {
+            const status = tr.querySelector('.status-select').value;
+            const defects = JSON.parse(tr.dataset.defects || '[]');
+            if (status === 'NG' && defects.length === 0) {
+                return alert(`Error: Pair #${tr.dataset.pairNumber} berstatus NG tetapi belum ada tipe defect yang dipilih. Data tidak dapat disimpan.`);
+            }
+        }
         const inspectedCount = Array.from(document.querySelectorAll('.status-select')).filter(s => s.value !== "").length;
         if (inspectedCount < TOTAL_PAIRS) {
             showModal({
                 title: 'Konfirmasi Penyimpanan',
                 body: `<p>Inspeksi baru dilakukan pada <strong>${inspectedCount} dari ${TOTAL_PAIRS} pairs</strong>.<br>Apakah Anda tetap ingin menyimpan data ini?</p>`,
                 confirmText: 'Lanjutkan',
-                cancelText: 'Batal',
-                onConfirm: () => {
-                    hideModal();
-                    saveData();
-                }
+                onConfirm: () => { hideModal(); saveData(); }
             });
         } else {
             saveData();
         }
     }
 
-    // =========================================================================
-    // FUNGSI INTI (Simpan, Download, Hapus)
-    // =========================================================================
-
     function saveData() {
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0];
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}-${now.getMinutes().toString().padStart(2, '0')}-${now.getSeconds().toString().padStart(2, '0')}`;
+        
         const headerData = {
-            date: new Date().toISOString().split('T')[0],
+            date: dateStr,
             validationCategory: DOMElements.validationCategory.value,
             styleNumber: DOMElements.styleNumberInput.value,
             model: DOMElements.model.value,
             line: DOMElements.line.value
         };
-
+        
         const pairsData = [];
         DOMElements.dataEntryBody.querySelectorAll('tr').forEach(tr => {
             pairsData.push({
                 pairNumber: parseInt(tr.dataset.pairNumber),
                 status: tr.querySelector('.status-select').value,
                 defects: JSON.parse(tr.dataset.defects || '[]'),
-                photo: tr.dataset.photo || null
+                photos: JSON.parse(tr.dataset.photos || '[]')
             });
         });
         
-        const categoryForName = headerData.validationCategory || 'DATA';
-        const dateForName = headerData.date;
-        const fileId = `lwt_${Date.now()}`;
-        const fileName = `LWT-${categoryForName}-${dateForName}`;
+        const fileId = `lwt_${now.getTime()}`;
+        const fileName = `LWT-${headerData.validationCategory || 'DATA'}-${dateStr}-${timeStr}`;
         const fileData = { id: fileId, name: fileName, header: headerData, pairs: pairsData };
 
         const existingData = getSavedData();
@@ -345,7 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderSavedFiles();
         resetFullForm();
     }
-
+    
     function resetFullForm() {
         DOMElements.validationCategory.value = '';
         DOMElements.styleNumberInput.value = '';
@@ -366,7 +396,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 title: 'Konfirmasi Hapus File',
                 body: `<p>Apakah Anda yakin ingin menghapus file ini secara permanen?</p>`,
                 confirmText: 'Ya, Hapus',
-                cancelText: 'Batal',
                 onConfirm: () => {
                     deleteDataFromStorage(fileId);
                     renderSavedFiles();
@@ -376,26 +405,64 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function handleDownload(fileId) {
-        const savedData = getSavedData();
-        const fileData = savedData.find(item => item.id === fileId);
-        if (fileData) {
-            generateExcel(fileData);
-        } else {
-            alert('Data file tidak ditemukan!');
+    async function handleDownload(fileId) {
+        const fileData = getSavedData().find(item => item.id === fileId);
+        if (!fileData) return alert('Data file tidak ditemukan!');
+        
+        const zip = new JSZip();
+        const imgFolder = zip.folder("images");
+        
+        const excelHeaders = ['Date', 'Validation Category', 'Style Number', 'Model', 'Line', 'Pair Number', 'OK/NG', 'Photos Attached', 'Defect type 1', 'Defect type 2', 'Defect type 3', 'Defect type 4', 'Defect type 5', 'Defect type 6', 'Defect type 7', 'Defect type 8', 'Defect type 9', 'Defect type 10'];
+        const dataForSheet = [excelHeaders];
+        
+        fileData.pairs.forEach(pair => {
+            const photoNames = [];
+            if (pair.photos && pair.photos.length > 0) {
+                pair.photos.forEach((photo, index) => {
+                    const photoName = `Pair-${pair.pairNumber}-Foto-${index + 1}.jpg`;
+                    photoNames.push(photoName);
+                    const base64Data = photo.data.split(',')[1];
+                    imgFolder.file(photoName, base64Data, { base64: true });
+                });
+            }
+            const row = [fileData.header.date, fileData.header.validationCategory, fileData.header.styleNumber, fileData.header.model, fileData.header.line, pair.pairNumber, pair.status, photoNames.join(', ')];
+            for (let i = 0; i < 10; i++) {
+                row.push(pair.defects[i] || '');
+            }
+            dataForSheet.push(row);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
+        const headerStyle = { font: { bold: true }, fill: { fgColor: { rgb: "FF007BFF" } }, alignment: { horizontal: "center", vertical: "center" } };
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const address = XLSX.utils.encode_cell({ r: 0, c: C });
+            if (ws[address]) ws[address].s = headerStyle;
         }
+        
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'LWT Report');
+        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        zip.file(`${fileData.name}.xlsx`, excelBuffer);
+
+        zip.generateAsync({ type: "blob" }).then(content => {
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(content);
+            link.download = `${fileData.name}.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
     }
-    
+
     function renderSavedFiles() {
         const data = getSavedData();
         const listElement = DOMElements.savedFilesList;
         listElement.innerHTML = '';
-
         if (data.length === 0) {
             listElement.innerHTML = '<li>Belum ada data yang tersimpan.</li>';
             return;
         }
-
         data.forEach(file => {
             const li = document.createElement('li');
             li.innerHTML = `
@@ -419,68 +486,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
     }
 
-    function generateExcel(fileData) {
-        const header = fileData.header;
-        const pairs = fileData.pairs;
-
-        const excelHeaders = [
-            'Date', 'Validation Category', 'Style Number', 'Model', 'Line',
-            'Pair Number', 'OK/NG', 'Photo Attached',
-            'Defect type 1', 'Defect type 2', 'Defect type 3', 'Defect type 4', 'Defect type 5',
-            'Defect type 6', 'Defect type 7', 'Defect type 8', 'Defect type 9', 'Defect type 10'
-        ];
-        
-        const dataForSheet = [excelHeaders];
-
-        pairs.forEach(pair => {
-            const row = [
-                header.date,
-                header.validationCategory,
-                header.styleNumber,
-                header.model,
-                header.line,
-                pair.pairNumber,
-                pair.status,
-                pair.photo ? 'Yes' : 'No'
-            ];
-            
-            for (let i = 0; i < 10; i++) {
-                row.push(pair.defects[i] || '');
-            }
-            dataForSheet.push(row);
-        });
-
-        const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
-        const headerStyle = {
-            font: { bold: true },
-            fill: { fgColor: { rgb: "FF007BFF" } },
-            alignment: { horizontal: "center", vertical: "center" }
-        };
-
-        const range = XLSX.utils.decode_range(ws['!ref']);
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-            const address = XLSX.utils.encode_cell({ r: 0, c: C });
-            if (!ws[address]) continue;
-            ws[address].s = headerStyle;
-        }
-
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'LWT Data');
-        XLSX.writeFile(wb, `${fileData.name}.xlsx`);
-    }
-
     // =========================================================================
-    // UTILITY MODAL DINAMIS
+    // UTILITY MODAL
     // =========================================================================
-    function showModal({ title, body, confirmText = 'OK', cancelText = 'Cancel', onConfirm, onCancel }) {
+    function showModal({ title, body, confirmText = 'OK', cancelText = 'Batal', onConfirm, onCancel }) {
         DOMElements.modalTitle.textContent = title;
         DOMElements.modalBody.innerHTML = body;
         DOMElements.modalConfirmBtn.textContent = confirmText;
         DOMElements.modalCancelBtn.textContent = cancelText;
-
         currentModalAction.onConfirm = onConfirm;
         currentModalAction.onCancel = onCancel || hideModal;
-
         DOMElements.modal.style.display = 'flex';
     }
 
