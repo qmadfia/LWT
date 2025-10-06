@@ -1,396 +1,617 @@
-let rowCounter = 0;
-let auditData = [];
+/**
+ * @file script.js
+ * @description Main logic for the Line Walk Through application.
+ * @version 1.0.0
+ */
 
-// Categories for audit
-const categories = [
-    'Kebersihan',
-    'Keselamatan Kerja',
-    'Kualitas Produk',
-    'Peralatan',
-    'Dokumentasi',
-    'Lingkungan Kerja',
-    'Proses Produksi',
-    'Material Storage',
-    'Maintenance',
-    'Training & Competency'
-];
+// Menunggu hingga seluruh konten halaman (DOM) selesai dimuat
+document.addEventListener('DOMContentLoaded', () => {
 
-// Initialize with sample data
-function initializeApp() {
-    // Add some sample rows
-    for (let i = 1; i <= 3; i++) {
-        addRow();
-    }
-    updateSummary();
-    showToast('Aplikasi berhasil dimuat!', 'success');
-}
+    // =========================================================================
+    // KONSTANTA DAN VARIABEL GLOBAL
+    // =========================================================================
 
-// Add new row to audit table
-function addRow() {
-    rowCounter++;
-    const tbody = document.getElementById('auditTableBody');
-    const row = document.createElement('tr');
-    
-    row.innerHTML = `
-        <td>${rowCounter}</td>
-        <td>
-            <select class="table-select" onchange="updateSummary()">
-                <option value="">Pilih Kategori</option>
-                ${categories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}
-            </select>
-        </td>
-        <td>
-            <input type="text" class="table-input" placeholder="Masukkan item audit" onchange="updateSummary()">
-        </td>
-        <td>
-            <input type="number" class="table-input" min="0" max="100" placeholder="100" value="100" onchange="updateSummary()">
-        </td>
-        <td>
-            <input type="number" class="table-input" min="0" max="100" placeholder="0" onchange="updateSummary()">
-        </td>
-        <td>
-            <input type="text" class="table-input" placeholder="Keterangan tambahan">
-        </td>
-        <td>
-            <button class="delete-btn" onclick="deleteRow(this)" title="Hapus baris">
-                <i class="fas fa-trash"></i>
-            </button>
-        </td>
-    `;
-    
-    tbody.appendChild(row);
-    updateRowNumbers();
-    updateSummary();
-}
+    /**
+     * Kunci untuk menyimpan data di Local Storage.
+     * @type {string}
+     */
+    const STORAGE_KEY = 'lineWalkThroughData';
 
-// Delete row from table
-function deleteRow(button) {
-    if (confirm('Apakah Anda yakin ingin menghapus item ini?')) {
-        button.closest('tr').remove();
-        updateRowNumbers();
-        updateSummary();
-        showToast('Item berhasil dihapus!', 'success');
-    }
-}
+    /**
+     * Total baris/pair yang akan di-generate.
+     * @type {number}
+     */
+    const TOTAL_PAIRS = 20;
 
-// Update row numbers after deletion
-function updateRowNumbers() {
-    const rows = document.querySelectorAll('#auditTableBody tr');
-    rows.forEach((row, index) => {
-        row.cells[0].textContent = index + 1;
-    });
-    rowCounter = rows.length;
-}
-
-// Update summary statistics
-function updateSummary() {
-    const rows = document.querySelectorAll('#auditTableBody tr');
-    let totalItems = rows.length;
-    let totalScore = 0;
-    let maxScore = 0;
-
-    rows.forEach(row => {
-        const maxVal = parseFloat(row.cells[3].querySelector('input').value) || 0;
-        const actualVal = parseFloat(row.cells[4].querySelector('input').value) || 0;
-        
-        maxScore += maxVal;
-        totalScore += actualVal;
-    });
-
-    const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
-
-    document.getElementById('totalItems').textContent = totalItems;
-    document.getElementById('totalScore').textContent = totalScore;
-    document.getElementById('maxScore').textContent = maxScore;
-    document.getElementById('percentage').textContent = percentage + '%';
-}
-
-// Collect all data from form
-function collectData() {
-    const data = {
-        auditorInfo: {
-            nama: document.getElementById('auditorName').value,
-            line: document.getElementById('line').value,
-            model: document.getElementById('model').value,
-            style: document.getElementById('style').value,
-            tanggal: new Date().toLocaleDateString('id-ID'),
-            waktu: new Date().toLocaleTimeString('id-ID')
-        },
-        auditItems: []
+    /**
+     * Database sementara untuk relasi Style Number dan Model.
+     * Di aplikasi nyata, ini bisa diambil dari server/API.
+     * @type {Object.<string, string>}
+     */
+    const styleModelMap = {
+        'STY001': 'Air Max 270',
+        'STY002': 'Classic Cortez',
+        'STY003': 'React Element 55',
+        'STY004': 'VaporMax Flyknit',
+        'STY005': 'Zoom Pegasus 38',
     };
 
-    const rows = document.querySelectorAll('#auditTableBody tr');
-    rows.forEach((row, index) => {
-        const kategori = row.cells[1].querySelector('select').value;
-        const audit = row.cells[2].querySelector('input').value;
-        const nilaiMaksimal = row.cells[3].querySelector('input').value;
-        const nilaiAktual = row.cells[4].querySelector('input').value;
-        const keterangan = row.cells[5].querySelector('input').value;
+    /**
+     * Daftar tipe defect yang tersedia.
+     * @type {string[]}
+     */
+    const defectTypes = [
+        'Hairy', 'Damage', 'Stain', 'Cracked', 'Wrinkle',
+        'Over Cement', 'Bonding Gap', 'Uneven Color', 'Stitching Issue', 'Component Missing'
+    ];
 
-        if (kategori || audit) {  // Only add rows with data
-            data.auditItems.push({
-                no: index + 1,
-                kategori,
-                audit,
-                nilaiMaksimal: parseFloat(nilaiMaksimal) || 0,
-                nilaiAktual: parseFloat(nilaiAktual) || 0,
-                keterangan
-            });
-        }
-    });
+    /**
+     * Referensi ke elemen-elemen DOM utama.
+     */
+    const DOMElements = {
+        validationCategory: document.getElementById('validation-category'),
+        styleNumber: document.getElementById('style-number'),
+        model: document.getElementById('model'),
+        line: document.getElementById('line'),
+        dataEntryBody: document.getElementById('data-entry-body'),
+        saveButton: document.getElementById('save-button'),
+        resetButton: document.getElementById('reset-button'),
+        savedFilesList: document.getElementById('saved-files-list'),
+        deleteModal: document.getElementById('delete-modal'),
+        confirmDeleteBtn: document.getElementById('confirm-delete-btn'),
+        cancelDeleteBtn: document.getElementById('cancel-delete-btn'),
+    };
 
-    return data;
-}
+    /**
+     * Variabel untuk menyimpan ID file yang akan dihapus.
+     * @type {string|null}
+     */
+    let fileIdToDelete = null;
 
-// Save data to localStorage
-function saveData() {
-    try {
-        const data = collectData();
-        
-        // Validation
-        if (!data.auditorInfo.nama) {
-            throw new Error('Nama auditor harus diisi!');
-        }
-        if (!data.auditorInfo.line) {
-            throw new Error('Line production harus dipilih!');
-        }
-        if (data.auditItems.length === 0) {
-            throw new Error('Minimal harus ada satu item audit!');
-        }
+    // =========================================================================
+    // FUNGSI INISIALISASI
+    // =========================================================================
 
-        localStorage.setItem('auditData', JSON.stringify(data));
-        showToast('Data berhasil disimpan!', 'success');
-    } catch (error) {
-        showToast(error.message, 'error');
+    /**
+     * Fungsi utama untuk menginisialisasi aplikasi.
+     * @returns {void}
+     */
+    function initializeApp() {
+        console.log("Initializing Line Walk Through App...");
+        populateLineDropdown();
+        generateDataEntryRows();
+        setupEventListeners();
+        renderSavedFiles();
+        console.log("App initialized successfully.");
     }
-}
 
-// Export data to Excel with proper formatting
-function exportToExcel() {
-    try {
-        showLoading(true);
-        
-        // Check if XLSX library is loaded
-        if (typeof XLSX === 'undefined') {
-            throw new Error('Library Excel belum dimuat! Refresh halaman dan coba lagi.');
+    /**
+     * Mengisi dropdown 'Line' dengan opsi yang ditentukan.
+     * @returns {void}
+     */
+    function populateLineDropdown() {
+        const lineSelect = DOMElements.line;
+        // Generate line 101-116
+        for (let i = 101; i <= 116; i++) {
+            const option = document.createElement('option');
+            option.value = i;
+            option.textContent = i;
+            lineSelect.appendChild(option);
         }
-        
-        const data = collectData();
-        
-        // Validation
-        if (!data.auditorInfo.nama) {
-            throw new Error('Nama auditor harus diisi!');
+        // Generate line 201-216
+        for (let i = 201; i <= 216; i++) {
+            const option = document.createElement('option');
+            option.value = i;
+            option.textContent = i;
+            lineSelect.appendChild(option);
         }
-        if (data.auditItems.length === 0) {
-            throw new Error('Tidak ada data audit untuk diekspor!');
-        }
+    }
 
-        // Create workbook
-        const workbook = XLSX.utils.book_new();
+    /**
+     * Membuat baris-baris input data di dalam tabel secara dinamis.
+     * @returns {void}
+     */
+    function generateDataEntryRows() {
+        const tbody = DOMElements.dataEntryBody;
+        tbody.innerHTML = ''; // Kosongkan tabel sebelum generate
+        for (let i = 1; i <= TOTAL_PAIRS; i++) {
+            const tr = document.createElement('tr');
+            tr.dataset.pairNumber = i;
 
-        // Create Excel data structure matching your manual form format
-        const excelData = [];
+            // Kolom Pair Number
+            const tdPair = document.createElement('td');
+            tdPair.textContent = i;
+            
+            // Kolom Status OK/NG
+            const tdStatus = document.createElement('td');
+            const statusSelect = document.createElement('select');
+            statusSelect.className = 'status-select';
+            statusSelect.innerHTML = `
+                <option value="OK">OK</option>
+                <option value="NG">NG</option>
+            `;
+            tdStatus.appendChild(statusSelect);
+
+            // Kolom Tipe Defect (Multi-select)
+            const tdDefect = document.createElement('td');
+            const defectInput = createMultiSelectDefectInput(i);
+            tdDefect.appendChild(defectInput);
+            
+            // Default state: OK, defect input disabled
+            toggleDefectInputState(defectInput, false);
+
+            tr.append(tdPair, tdStatus, tdDefect);
+            tbody.appendChild(tr);
+        }
+    }
+
+    /**
+     * Membuat komponen input multi-select untuk tipe defect.
+     * @param {number} pairIndex - Nomor pair untuk ID unik.
+     * @returns {HTMLDivElement} - Elemen container untuk multi-select.
+     */
+    function createMultiSelectDefectInput(pairIndex) {
+        const container = document.createElement('div');
+        container.className = 'defect-input-container';
+        container.dataset.pair = pairIndex;
+
+        const tagsContainer = document.createElement('div');
+        tagsContainer.className = 'defect-tags-container';
+        tagsContainer.textContent = 'Pilih defect...';
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'multi-select-dropdown';
         
-        // Row 1-4: Header information with merged cells (A1:F1, A2:F2, etc.)
-        excelData.push([`Nama Auditor : ${data.auditorInfo.nama}`, '', '', '', '', '']);
-        excelData.push([`Line : ${data.auditorInfo.line}`, '', '', '', '', '']);
-        excelData.push([`Model : ${data.auditorInfo.model}`, '', '', '', '', '']);
-        excelData.push([`Style : ${data.auditorInfo.style}`, '', '', '', '', '']);
-        
-        // Row 5: Table headers
-        excelData.push(['No', 'Kategori', 'Audit', 'Value', 'Nilai', 'Keterangan']);
-        
-        // Data rows starting from row 6
-        data.auditItems.forEach((item, index) => {
-            excelData.push([
-                index + 1,
-                item.kategori,
-                item.audit,
-                item.nilaiMaksimal,
-                item.nilaiAktual,
-                item.keterangan
-            ]);
+        defectTypes.forEach(defect => {
+            const label = document.createElement('label');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = defect;
+            checkbox.dataset.defect = defect;
+            label.appendChild(checkbox);
+            label.append(` ${defect}`);
+            dropdown.appendChild(label);
         });
 
-        // Create worksheet from array
-        const worksheet = XLSX.utils.aoa_to_sheet(excelData);
-
-        // Set column widths for better readability
-        const columnWidths = [
-            { wch: 5 },   // No
-            { wch: 20 },  // Kategori
-            { wch: 30 },  // Audit
-            { wch: 12 },  // Value
-            { wch: 12 },  // Nilai
-            { wch: 25 }   // Keterangan
-        ];
-        worksheet['!cols'] = columnWidths;
-
-        // Add merge ranges for header rows (A1:F1, A2:F2, A3:F3, A4:F4)
-        worksheet['!merges'] = [
-            { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // Row 1: Nama Auditor
-            { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }, // Row 2: Line
-            { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }, // Row 3: Model
-            { s: { r: 3, c: 0 }, e: { r: 3, c: 5 } }  // Row 4: Style
-        ];
-
-        // Style the header information (rows 1-4)
-        const headerStyle = {
-            font: { bold: true, size: 12 },
-            alignment: { horizontal: 'left', vertical: 'center' },
-            fill: { fgColor: { rgb: 'E3F2FD' } },
-            border: {
-                top: { style: 'thin' },
-                bottom: { style: 'thin' },
-                left: { style: 'thin' },
-                right: { style: 'thin' }
-            }
-        };
-
-        // Apply header styles
-        for (let row = 0; row < 4; row++) {
-            const cellRef = XLSX.utils.encode_cell({ r: row, c: 0 });
-            if (!worksheet[cellRef]) worksheet[cellRef] = {};
-            worksheet[cellRef].s = headerStyle;
-        }
-
-        // Style the table header (row 5)
-        const tableHeaderStyle = {
-            font: { bold: true, color: { rgb: 'FFFFFF' } },
-            fill: { fgColor: { rgb: '2196F3' } },
-            alignment: { horizontal: 'center', vertical: 'center' },
-            border: {
-                top: { style: 'thin' },
-                bottom: { style: 'thin' },
-                left: { style: 'thin' },
-                right: { style: 'thin' }
-            }
-        };
-
-        // Apply table header styles
-        for (let col = 0; col < 6; col++) {
-            const cellRef = XLSX.utils.encode_cell({ r: 4, c: col });
-            if (!worksheet[cellRef]) worksheet[cellRef] = {};
-            worksheet[cellRef].s = tableHeaderStyle;
-        }
-
-        // Style data rows with alternating colors
-        const evenRowStyle = {
-            fill: { fgColor: { rgb: 'F8F9FA' } },
-            border: {
-                top: { style: 'thin' },
-                bottom: { style: 'thin' },
-                left: { style: 'thin' },
-                right: { style: 'thin' }
-            }
-        };
-
-        const oddRowStyle = {
-            fill: { fgColor: { rgb: 'FFFFFF' } },
-            border: {
-                top: { style: 'thin' },
-                bottom: { style: 'thin' },
-                left: { style: 'thin' },
-                right: { style: 'thin' }
-            }
-        };
-
-        // Apply data row styles
-        for (let row = 5; row < excelData.length; row++) {
-            for (let col = 0; col < 6; col++) {
-                const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
-                if (!worksheet[cellRef]) worksheet[cellRef] = {};
-                worksheet[cellRef].s = (row - 5) % 2 === 0 ? evenRowStyle : oddRowStyle;
-            }
-        }
-
-        // Add worksheet to workbook
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Form Audit');
-
-        // Generate filename
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:]/g, '-');
-        const lineName = data.auditorInfo.line.replace(/\s+/g, '_') || 'Unknown';
-        const filename = `Audit_${lineName}_${timestamp}.xlsx`;
-
-        console.log('Attempting to download file:', filename);
-        
-        // Multiple download methods for better compatibility
-        try {
-            // Method 1: Standard XLSX writeFile
-            XLSX.writeFile(workbook, filename);
-            console.log('Download initiated successfully');
-        } catch (downloadError) {
-            console.error('Standard download failed, trying alternative method:', downloadError);
-            
-            // Method 2: Manual blob download
-            const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-            const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            
-            // Create download link
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-            
-            console.log('Alternative download method used');
-        }
-        
-        showLoading(false);
-        showToast('File Excel berhasil diunduh! Cek folder Downloads Anda.', 'success');
-        
-    } catch (error) {
-        showLoading(false);
-        console.error('Export error:', error);
-        showToast('Error: ' + error.message, 'error');
+        container.append(tagsContainer, dropdown);
+        return container;
     }
-}
 
-// Show loading animation
-function showLoading(show) {
-    document.getElementById('loading').style.display = show ? 'block' : 'none';
-}
+    // =========================================================================
+    // EVENT LISTENERS SETUP
+    // =========================================================================
 
-// Show toast notification
-function showToast(message, type = 'success') {
-    const toast = document.getElementById('toast');
-    toast.textContent = message;
-    toast.className = `toast ${type}`;
-    toast.classList.add('show');
+    /**
+     * Menyiapkan semua event listener yang dibutuhkan aplikasi.
+     * @returns {void}
+     */
+    function setupEventListeners() {
+        // Listener untuk input Style Number (auto-fill Model)
+        DOMElements.styleNumber.addEventListener('input', handleStyleNumberInput);
+
+        // Listener untuk perubahan pada tabel data entry (delegation)
+        DOMElements.dataEntryBody.addEventListener('change', handleTableChange);
+        
+        // Listener untuk klik pada tabel (untuk multi-select)
+        DOMElements.dataEntryBody.addEventListener('click', handleTableClick);
+
+        // Listener untuk klik di luar dropdown multi-select
+        document.addEventListener('click', handleDocumentClick);
+
+        // Listener untuk tombol Simpan dan Reset
+        DOMElements.saveButton.addEventListener('click', handleSaveData);
+        DOMElements.resetButton.addEventListener('click', resetForm);
+
+        // Listener untuk daftar file tersimpan (delegation)
+        DOMElements.savedFilesList.addEventListener('click', handleSavedFilesActions);
+
+        // Listener untuk tombol modal
+        DOMElements.confirmDeleteBtn.addEventListener('click', handleConfirmDelete);
+        DOMElements.cancelDeleteBtn.addEventListener('click', () => showDeleteModal(false));
+    }
+
+    // =========================================================================
+    // EVENT HANDLER FUNCTIONS
+    // =========================================================================
+
+    /**
+     * Menangani input pada field Style Number untuk mengisi field Model secara otomatis.
+     * @param {Event} e - Event object.
+     */
+    function handleStyleNumberInput(e) {
+        const styleNumber = e.target.value.trim().toUpperCase();
+        DOMElements.model.value = styleModelMap[styleNumber] || '';
+    }
+
+    /**
+     * Menangani event 'change' pada tabel data, terutama untuk dropdown OK/NG.
+     * @param {Event} e - Event object.
+     */
+    function handleTableChange(e) {
+        if (e.target.classList.contains('status-select')) {
+            const selectedValue = e.target.value;
+            const tr = e.target.closest('tr');
+            const defectInputContainer = tr.querySelector('.defect-input-container');
+            
+            if (selectedValue === 'OK') {
+                toggleDefectInputState(defectInputContainer, false);
+                clearDefectSelection(defectInputContainer);
+            } else { // NG
+                toggleDefectInputState(defectInputContainer, true);
+            }
+        }
+    }
     
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, 3000);
-}
+    /**
+     * Menangani event 'click' pada tabel data, untuk membuka dropdown dan menghapus tag.
+     * @param {Event} e - Event object.
+     */
+    function handleTableClick(e) {
+        const tagsContainer = e.target.closest('.defect-tags-container');
+        if (tagsContainer) {
+            const parentContainer = tagsContainer.closest('.defect-input-container');
+            if (!parentContainer.classList.contains('disabled')) {
+                const dropdown = parentContainer.querySelector('.multi-select-dropdown');
+                dropdown.classList.toggle('active');
+            }
+        }
 
-// Load saved data on page load
-function loadSavedData() {
-    const savedData = localStorage.getItem('auditData');
-    if (savedData) {
-        try {
-            const data = JSON.parse(savedData);
-            
-            // Load auditor info
-            document.getElementById('auditorName').value = data.auditorInfo.nama || '';
-            document.getElementById('line').value = data.auditorInfo.line || '';
-            document.getElementById('model').value = data.auditorInfo.model || '';
-            document.getElementById('style').value = data.auditorInfo.style || '';
-            
-            showToast('Data tersimpan berhasil dimuat!', 'success');
-        } catch (error) {
-            console.error('Error loading saved data:', error);
+        if (e.target.classList.contains('remove-tag')) {
+            const tagToRemove = e.target.parentElement;
+            const defectValue = e.target.dataset.value;
+            const container = e.target.closest('.defect-input-container');
+            const checkbox = container.querySelector(`input[value="${defectValue}"]`);
+            if (checkbox) checkbox.checked = false;
+            tagToRemove.remove();
+            updateTagsContainerPlaceholder(container);
+        }
+
+        if(e.target.type === 'checkbox' && e.target.closest('.multi-select-dropdown')) {
+            const container = e.target.closest('.defect-input-container');
+            updateDefectTags(container);
         }
     }
-}
 
-// Initialize app when page loads
-document.addEventListener('DOMContentLoaded', function() {
+    /**
+     * Menutup dropdown multi-select jika user klik di luar area tersebut.
+     * @param {Event} e - Event object.
+     */
+    function handleDocumentClick(e) {
+        if (!e.target.closest('.defect-input-container')) {
+            document.querySelectorAll('.multi-select-dropdown.active').forEach(dropdown => {
+                dropdown.classList.remove('active');
+            });
+        }
+    }
+
+    /**
+     * Menangani klik pada tombol Simpan. Mengumpulkan data dan menyimpannya.
+     */
+    function handleSaveData() {
+        if (!validateHeaderForm()) {
+            alert('Harap lengkapi semua informasi umum (Validation Category, Style Number, dan Line).');
+            return;
+        }
+
+        // Kumpulkan data header
+        const headerData = {
+            date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+            validationCategory: DOMElements.validationCategory.value,
+            styleNumber: DOMElements.styleNumber.value,
+            model: DOMElements.model.value,
+            line: DOMElements.line.value
+        };
+
+        // Kumpulkan data dari setiap baris
+        const pairsData = [];
+        const rows = DOMElements.dataEntryBody.querySelectorAll('tr');
+        rows.forEach(row => {
+            const pairNumber = row.dataset.pairNumber;
+            const status = row.querySelector('.status-select').value;
+            let defects = [];
+
+            if (status === 'NG') {
+                const checkedDefects = row.querySelectorAll('.defect-input-container input[type="checkbox"]:checked');
+                checkedDefects.forEach(checkbox => defects.push(checkbox.value));
+            }
+
+            pairsData.push({
+                pairNumber: parseInt(pairNumber),
+                status,
+                defects
+            });
+        });
+
+        // Buat objek file data
+        const fileId = `lwt_${Date.now()}`;
+        const fileName = `LWT-${headerData.validationCategory}-${headerData.date}`;
+        const fileData = {
+            id: fileId,
+            name: fileName,
+            header: headerData,
+            pairs: pairsData
+        };
+
+        // Simpan data ke Local Storage
+        saveDataToStorage(fileData);
+        alert(`Data berhasil disimpan dengan nama: ${fileName}`);
+        
+        // Render ulang daftar file dan reset form
+        renderSavedFiles();
+        resetForm();
+    }
+    
+    /**
+     * Menangani aksi (download/delete) pada daftar file yang tersimpan.
+     * @param {Event} e - Event object.
+     */
+    function handleSavedFilesActions(e) {
+        const target = e.target;
+        const fileId = target.dataset.id;
+        if (!fileId) return;
+
+        if (target.classList.contains('download-btn')) {
+            handleDownload(fileId);
+        } else if (target.classList.contains('delete-btn')) {
+            fileIdToDelete = fileId;
+            showDeleteModal(true);
+        }
+    }
+
+    /**
+     * Menangani konfirmasi penghapusan file.
+     */
+    function handleConfirmDelete() {
+        if (fileIdToDelete) {
+            deleteDataFromStorage(fileIdToDelete);
+            renderSavedFiles();
+            showDeleteModal(false);
+            fileIdToDelete = null;
+        }
+    }
+    
+    /**
+     * Menangani permintaan download file ke format Excel.
+     * @param {string} fileId - ID file yang akan di-download.
+     */
+    function handleDownload(fileId) {
+        const savedData = getSavedData();
+        const fileData = savedData.find(item => item.id === fileId);
+        if (!fileData) {
+            alert('Data tidak ditemukan!');
+            return;
+        }
+        generateExcel(fileData);
+    }
+    
+    // =========================================================================
+    // FUNGSI UTILITY & DOM MANIPULATION
+    // =========================================================================
+
+    /**
+     * Mengaktifkan atau menonaktifkan input defect.
+     * @param {HTMLDivElement} container - Elemen container input defect.
+     * @param {boolean} enable - true untuk enable, false untuk disable.
+     */
+    function toggleDefectInputState(container, enable) {
+        if (enable) {
+            container.classList.remove('disabled');
+        } else {
+            container.classList.add('disabled');
+            container.querySelector('.multi-select-dropdown').classList.remove('active');
+        }
+    }
+
+    /**
+     * Membersihkan pilihan defect pada satu baris.
+     * @param {HTMLDivElement} container - Elemen container input defect.
+     */
+    function clearDefectSelection(container) {
+        const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(cb => cb.checked = false);
+        updateDefectTags(container);
+    }
+    
+    /**
+     * Memperbarui tampilan tag defect berdasarkan checkbox yang dipilih.
+     * @param {HTMLDivElement} container - Elemen container input defect.
+     */
+    function updateDefectTags(container) {
+        const tagsContainer = container.querySelector('.defect-tags-container');
+        const checkedBoxes = container.querySelectorAll('input:checked');
+        
+        tagsContainer.innerHTML = ''; // Clear existing tags
+
+        checkedBoxes.forEach(checkbox => {
+            const tag = document.createElement('span');
+            tag.className = 'defect-tag';
+            tag.textContent = checkbox.value;
+            
+            const removeBtn = document.createElement('span');
+            removeBtn.className = 'remove-tag';
+            removeBtn.textContent = 'x';
+            removeBtn.dataset.value = checkbox.value;
+
+            tag.appendChild(removeBtn);
+            tagsContainer.appendChild(tag);
+        });
+
+        updateTagsContainerPlaceholder(container);
+    }
+
+    /**
+     * Menampilkan atau menyembunyikan placeholder 'Pilih defect...'
+     * @param {HTMLDivElement} container - Elemen container input defect.
+     */
+    function updateTagsContainerPlaceholder(container) {
+        const tagsContainer = container.querySelector('.defect-tags-container');
+        if (tagsContainer.childElementCount === 0) {
+            tagsContainer.textContent = 'Pilih defect...';
+        } else if (tagsContainer.textContent === 'Pilih defect...'){
+             tagsContainer.textContent = ''; // Hapus placeholder jika ada tag baru
+        }
+    }
+
+    /**
+     * Merender daftar file yang tersimpan dari Local Storage.
+     */
+    function renderSavedFiles() {
+        const data = getSavedData();
+        const listElement = DOMElements.savedFilesList;
+        listElement.innerHTML = '';
+
+        if (data.length === 0) {
+            listElement.innerHTML = '<li>Belum ada data yang tersimpan.</li>';
+            return;
+        }
+
+        data.forEach(file => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <span class="file-name">${file.name} (ID: ${file.id})</span>
+                <div class="file-actions">
+                    <button class="btn btn-primary download-btn" data-id="${file.id}">Download</button>
+                    <button class="btn btn-danger delete-btn" data-id="${file.id}">Hapus</button>
+                </div>
+            `;
+            listElement.appendChild(li);
+        });
+    }
+
+    /**
+     * Menampilkan atau menyembunyikan modal konfirmasi hapus.
+     * @param {boolean} show - true untuk tampil, false untuk sembunyi.
+     */
+    function showDeleteModal(show) {
+        DOMElements.deleteModal.style.display = show ? 'flex' : 'none';
+    }
+    
+    /**
+     * Memvalidasi form header sebelum menyimpan.
+     * @returns {boolean} - true jika valid, false jika tidak.
+     */
+    function validateHeaderForm() {
+        return DOMElements.validationCategory.value.trim() !== '' &&
+               DOMElements.styleNumber.value.trim() !== '' &&
+               DOMElements.line.value.trim() !== '';
+    }
+
+    /**
+     * Mereset seluruh form ke keadaan awal.
+     */
+    function resetForm() {
+        document.querySelector('.form-section form, .form-section').reset(); // Jika ada form tag
+        DOMElements.validationCategory.value = '';
+        DOMElements.styleNumber.value = '';
+        DOMElements.model.value = '';
+        DOMElements.line.value = '';
+        generateDataEntryRows(); // Generate ulang baris untuk reset state
+    }
+
+    // =========================================================================
+    // FUNGSI LOCAL STORAGE
+    // =========================================================================
+
+    /**
+     * Mengambil semua data tersimpan dari Local Storage.
+     * @returns {Array} - Array of saved file objects.
+     */
+    function getSavedData() {
+        const dataJSON = localStorage.getItem(STORAGE_KEY);
+        return dataJSON ? JSON.parse(dataJSON) : [];
+    }
+
+    /**
+     * Menyimpan data baru ke Local Storage.
+     * @param {Object} fileData - Objek file yang akan disimpan.
+     */
+    function saveDataToStorage(fileData) {
+        const existingData = getSavedData();
+        existingData.push(fileData);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(existingData));
+    }
+
+    /**
+     * Menghapus data dari Local Storage berdasarkan ID.
+     * @param {string} fileId - ID file yang akan dihapus.
+     */
+    function deleteDataFromStorage(fileId) {
+        let existingData = getSavedData();
+        const updatedData = existingData.filter(item => item.id !== fileId);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData));
+    }
+    
+    // =========================================================================
+    // FUNGSI GENERATE EXCEL (menggunakan SheetJS/xlsx)
+    // =========================================================================
+    
+    /**
+     * Membuat dan men-download file Excel dari data yang diberikan.
+     * @param {Object} fileData - Data lengkap file.
+     */
+    function generateExcel(fileData) {
+        const header = fileData.header;
+        const pairs = fileData.pairs;
+
+        // Mendefinisikan header kolom Excel
+        const excelHeaders = [
+            'Date', 'Validation Category', 'Style Number', 'Model', 'Line',
+            'Pair Number', 'OK/NG',
+            'Defect type 1', 'Defect type 2', 'Defect type 3', 'Defect type 4', 'Defect type 5',
+            'Defect type 6', 'Defect type 7', 'Defect type 8', 'Defect type 9', 'Defect type 10'
+        ]; // Total 17 kolom (A-Q)
+        
+        const dataForSheet = [excelHeaders];
+
+        // Memformat data baris
+        pairs.forEach(pair => {
+            const row = [
+                header.date,
+                header.validationCategory,
+                header.styleNumber,
+                header.model,
+                header.line,
+                pair.pairNumber,
+                pair.status
+            ];
+            
+            // Tambahkan defect ke kolom-kolom berikutnya
+            for (let i = 0; i < 10; i++) {
+                row.push(pair.defects[i] || ''); // Isi dengan defect atau string kosong
+            }
+
+            dataForSheet.push(row);
+        });
+
+        // Membuat worksheet dari array data
+        const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
+
+        // Menambahkan styling ke header
+        const headerStyle = {
+            font: { bold: true },
+            fill: { fgColor: { rgb: "FF007BFF" } }, // Warna biru
+            alignment: { horizontal: "center", vertical: "center" }
+        };
+
+        // Aplikasikan style ke setiap cell di baris header (A1 sampai Q1)
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const address = XLSX.utils.encode_cell({ r: 0, c: C });
+            if (!ws[address]) continue;
+            ws[address].s = headerStyle;
+        }
+
+        // Membuat workbook baru
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'LWT Data');
+
+        // Men-trigger download file Excel
+        XLSX.writeFile(wb, `${fileData.name}.xlsx`);
+    }
+
+    // =========================================================================
+    // INISIALISASI APLIKASI
+    // =========================================================================
     initializeApp();
-    loadSavedData();
-});
 
-// Auto-save functionality
-setInterval(saveData, 30000); // Auto-save every 30 seconds
+});
