@@ -1,12 +1,13 @@
 /* Import Font */
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
 
-/* Reset dan Body Styling */
+/* Variabel Warna */
 :root {
     --primary-color: #007bff;
     --secondary-color: #6c757d;
     --success-color: #28a745;
     --danger-color: #dc3545;
+    --warning-color: #ffc107;
     --light-color: #f8f9fa;
     --dark-color: #343a40;
     --background-color: #e9ecef;
@@ -14,11 +15,7 @@
     --card-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
     font-family: 'Roboto', sans-serif;
@@ -27,293 +24,117 @@ body {
     line-height: 1.6;
 }
 
-.container {
-    max-width: 1200px;
-    margin: 20px auto;
-    padding: 0 15px;
-}
+.container { max-width: 1200px; margin: 20px auto; padding: 0 15px; }
 
-/* Header */
+/* 1. Header Diperkecil */
 header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     background-color: white;
-    padding: 15px 25px;
+    padding: 10px 20px;
     border-radius: 8px;
     margin-bottom: 20px;
     box-shadow: var(--card-shadow);
 }
 
-header .logo img {
-    height: 50px;
-}
+header .logo img { height: 40px; }
+header h1 { color: var(--primary-color); font-size: 1.5em; }
 
-header h1 {
-    color: var(--primary-color);
-    font-size: 1.8em;
-}
-
-/* Card Styling Umum */
 .card {
-    background-color: white;
-    padding: 25px;
-    border-radius: 8px;
-    margin-bottom: 20px;
+    background-color: white; padding: 25px;
+    border-radius: 8px; margin-bottom: 20px;
     box-shadow: var(--card-shadow);
 }
+.card h2 { margin-bottom: 20px; color: var(--dark-color); border-bottom: 2px solid var(--primary-color); padding-bottom: 10px; }
 
-.card h2 {
-    margin-bottom: 20px;
-    color: var(--dark-color);
-    border-bottom: 2px solid var(--primary-color);
-    padding-bottom: 10px;
-}
+/* Form Section (Tanpa Judul "Informasi Umum") */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+.form-group label { display: block; margin-bottom: 8px; font-weight: 500; }
+.form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 1rem; }
+.form-group input[readonly] { background-color: #e9ecef; cursor: not-allowed; }
 
-/* Form Section */
-.form-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 20px;
-}
-
-.form-group label {
-    display: block;
-    margin-bottom: 8px;
-    font-weight: 500;
-}
-
-.form-group input,
-.form-group select {
-    width: 100%;
-    padding: 10px;
+/* 4. Filter Autocomplete Style Number */
+.autocomplete-container { position: relative; }
+.autocomplete-results {
+    display: none; position: absolute;
     border: 1px solid var(--border-color);
-    border-radius: 4px;
-    font-size: 1rem;
+    border-top: none; z-index: 99;
+    top: 100%; left: 0; right: 0;
+    background-color: white; max-height: 150px;
+    overflow-y: auto; box-shadow: 0 8px 16px rgba(0,0,0,0.1);
 }
+.autocomplete-results div { padding: 10px; cursor: pointer; }
+.autocomplete-results div:hover { background-color: #e9e9e9; }
+.autocomplete-results .highlight { font-weight: bold; }
 
-.form-group input[readonly] {
-    background-color: #e9ecef;
-    cursor: not-allowed;
-}
+/* 5a. Tabel Scrollable */
+.table-wrapper { max-height: 500px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 5px; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+thead th { background-color: var(--primary-color); color: white; position: sticky; top: 0; z-index: 10; }
+tbody tr:nth-child(even) { background-color: var(--light-color); }
 
-/* Tabel Data Entry */
-.table-container {
-    overflow-x: auto;
-}
+/* Lebar Kolom Tetap */
+.col-pair { width: 8%; }
+.col-status { width: 20%; }
+.col-defect { width: 42%; }
+.col-photo { width: 15%; text-align: center; }
+.col-action { width: 15%; text-align: center; }
 
-table {
-    width: 100%;
-    border-collapse: collapse;
-}
+/* 5b & 5c. Pembeda Warna Status & Defect Input */
+.status-select { background-color: var(--light-color); color: var(--dark-color); transition: background-color 0.3s, color 0.3s; }
+.status-select.status-selected.status-ok { background-color: var(--success-color); color: white; font-weight: bold; }
+.status-select.status-selected.status-ng { background-color: var(--danger-color); color: white; font-weight: bold; }
 
-th, td {
-    padding: 12px 15px;
-    text-align: left;
-    border-bottom: 1px solid var(--border-color);
-}
-
-thead th {
-    background-color: var(--primary-color);
-    color: white;
-    font-weight: 500;
-}
-
-tbody tr:nth-child(even) {
-    background-color: var(--light-color);
-}
-
-tbody tr:hover {
-    background-color: #f1f1f1;
-}
-
-/* Multi-select Defect Input */
 .defect-input-container {
-    position: relative;
+    padding: 5px; border: 1px solid transparent; border-radius: 4px; cursor: pointer;
+    background-color: var(--light-color); min-height: 40px; transition: background-color 0.3s;
 }
+.defect-input-container.enabled { border-color: var(--primary-color); cursor: pointer; background-color: white; }
+.defect-input-container.disabled { background-color: #e9ecef; cursor: not-allowed; opacity: 0.7; }
 
-.multi-select-dropdown {
-    display: none;
-    position: absolute;
-    background-color: white;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    max-height: 200px;
-    overflow-y: auto;
-    width: 100%;
-    z-index: 100;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
-}
-
-.multi-select-dropdown.active {
-    display: block;
-}
-
-.multi-select-dropdown label {
-    display: block;
-    padding: 8px 12px;
-    cursor: pointer;
-}
-
-.multi-select-dropdown label:hover {
-    background-color: #f1f1f1;
-}
-
-.defect-tags-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    padding: 5px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    min-height: 38px;
-    align-items: center;
-    cursor: pointer;
-}
-
+/* 5d. Defect Tags Tetap (Tidak Bergerak) */
+.defect-tags-wrapper { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .defect-tag {
-    background-color: var(--secondary-color);
-    color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    font-size: 0.9em;
+    background-color: var(--secondary-color); color: white;
+    padding: 3px 8px; border-radius: 4px; font-size: 0.85em;
+    white-space: nowrap;
 }
+.placeholder-text { color: #888; }
 
-.defect-tag .remove-tag {
-    margin-left: 8px;
-    cursor: pointer;
-    font-weight: bold;
-}
+/* 5f & 5g. Tombol Aksi di Tabel (Foto & Hapus) */
+.table-action-btn { background: none; border: none; cursor: pointer; font-size: 1.5em; transition: transform 0.2s; }
+.table-action-btn:hover { transform: scale(1.2); }
+.camera-btn { color: var(--primary-color); }
+.camera-btn.has-photo { color: var(--success-color); }
+.delete-row-btn { color: var(--danger-color); }
 
-.defect-input-container.disabled .defect-tags-container {
-    background-color: #e9ecef;
-    cursor: not-allowed;
-    opacity: 0.6;
-}
+/* 5e. Dropdown Defect Interaktif (dalam Modal) */
+#defect-selection-modal { padding: 0; }
+#defect-selection-modal .search-bar { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid var(--border-color); border-radius: 4px; }
+#defect-selection-modal .options-container { max-height: 250px; overflow-y: auto; }
+#defect-selection-modal label { display: block; padding: 10px; cursor: pointer; border-radius: 4px; }
+#defect-selection-modal label:hover { background-color: #f1f1f1; }
+#defect-selection-modal input[type="checkbox"] { margin-right: 10px; }
 
-/* Tombol */
-.actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 15px;
-    margin-bottom: 20px;
-}
+/* 6. Tombol Aksi & File Tersimpan */
+.actions { display: flex; justify-content: flex-end; margin-bottom: 20px; }
+.btn { padding: 12px 25px; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; font-weight: 500; transition: background-color 0.3s ease; }
+.btn-primary { background-color: var(--primary-color); color: white; }
+.btn-primary:hover { background-color: #0056b3; }
+.btn-secondary { background-color: var(--secondary-color); color: white; }
 
-.btn {
-    padding: 12px 25px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 1rem;
-    font-weight: 500;
-    transition: background-color 0.3s ease;
-}
+#saved-files-list { list-style: none; }
+#saved-files-list li { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid var(--border-color); }
 
-.btn-primary {
-    background-color: var(--primary-color);
-    color: white;
-}
+/* Modal Umum */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+.modal-content { background-color: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px; text-align: center; }
+.modal-actions { margin-top: 20px; display: flex; justify-content: center; gap: 15px; }
 
-.btn-primary:hover {
-    background-color: #0056b3;
-}
-
-.btn-secondary {
-    background-color: var(--secondary-color);
-    color: white;
-}
-
-.btn-secondary:hover {
-    background-color: #5a6268;
-}
-
-.btn-danger {
-    background-color: var(--danger-color);
-    color: white;
-}
-
-.btn-danger:hover {
-    background-color: #c82333;
-}
-
-/* Daftar File Tersimpan */
-#saved-files-list {
-    list-style: none;
-}
-
-#saved-files-list li {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-#saved-files-list li:last-child {
-    border-bottom: none;
-}
-
-#saved-files-list .file-actions button {
-    margin-left: 10px;
-    padding: 5px 10px;
-    font-size: 0.9em;
-}
-
-/* Modal Konfirmasi */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.6);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-}
-
-.modal-content {
-    background-color: white;
-    padding: 30px;
-    border-radius: 8px;
-    width: 90%;
-    max-width: 400px;
-    text-align: center;
-}
-
-.modal-actions {
-    margin-top: 20px;
-    display: flex;
-    justify-content: center;
-    gap: 15px;
-}
-
-/* Responsiveness */
 @media (max-width: 768px) {
-    header {
-        flex-direction: column;
-        text-align: center;
-        gap: 10px;
-    }
-
-    .form-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .actions {
-        flex-direction: column;
-    }
-
-    .btn {
-        width: 100%;
-    }
-
-    #saved-files-list li {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-    }
+    header { flex-direction: column; text-align: center; gap: 10px; }
+    .table-wrapper { max-height: 400px; }
+    th, td { font-size: 0.9em; padding: 8px; }
 }
