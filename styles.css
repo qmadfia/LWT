@@ -29,7 +29,7 @@
 /* ===========================================
 // 2. Base Styling dan Layout Utama
 // =========================================== */
-body {
+html, body {
     font-family: 'Roboto', sans-serif;
     background-color: var(--background-color);
     color: var(--dark-color);
