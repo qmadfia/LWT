@@ -15,6 +15,108 @@ document.addEventListener('DOMContentLoaded', () => {
     // URL Google Apps Script Web App (ganti dengan URL deploy Anda)
     const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx05PeKZfdSM6qSNa9tSFpqcjeBrckNQ8KdWDcKOXZ_t4zlek7ycCrx6xXOxfstwH7grw/exec';
 
+    // Konstanta untuk batasan upload
+    const MAX_PHOTOS_PER_PAIR = 5;
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    const MAX_WIDTH = 1024;
+    const MAX_HEIGHT = 1024;
+
+    // IndexedDB setup
+    const DB_NAME = 'LWT_DB';
+    const DB_VERSION = 1;
+    const STORE_NAME = 'inspections';
+
+    function openDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async function saveToDB(data) {
+        const db = await openDB();
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        store.put(data);
+        return new Promise((resolve, reject) => {
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    async function getFromDB() {
+        const db = await openDB();
+        const transaction = db.transaction([STORE_NAME], 'readonly');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.getAll();
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async function deleteFromDB(id) {
+        const db = await openDB();
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        store.delete(id);
+        return new Promise((resolve, reject) => {
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /**
+     * Mengompresi gambar menggunakan Canvas API.
+     * @param {string} base64String - Base64 string gambar asli.
+     * @param {number} maxWidth - Lebar maksimal.
+     * @param {number} maxHeight - Tinggi maksimal.
+     * @param {number} quality - Kualitas kompresi (0-1).
+     * @returns {Promise<string>} Base64 string gambar terkompresi.
+     */
+    function compressImage(base64String, maxWidth = MAX_WIDTH, maxHeight = MAX_HEIGHT, quality = 0.8) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                // Hitung ukuran baru sambil maintain aspect ratio
+                let { width, height } = img;
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height = (height * maxWidth) / width;
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width = (width * maxHeight) / height;
+                        height = maxHeight;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                // Draw gambar ke canvas
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Konversi ke base64 dengan kualitas rendah
+                const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+                resolve(compressedBase64);
+            };
+            img.onerror = reject;
+            img.src = base64String;
+        });
+    }
+
     const DOMElements = {
         // Form Elements
         auditor: document.getElementById('auditor'),
@@ -39,18 +141,19 @@ document.addEventListener('DOMContentLoaded', () => {
         modalCancelBtn: document.getElementById('modal-cancel-btn'),
     
        // TAMBAHAN BARU UNTUK OVERLAY
-        loadingOverlay: document.getElementById('loading-overlay'), 
+        loadingOverlay: document.getElementById('loading-overlay'),
+        uploadProgress: document.getElementById('upload-progress'), 
     };
 
     // =========================================================================
     // 2. FUNGSI INISIALISASI APLIKASI
     // =========================================================================
     
-    function initializeApp() {
+    async function initializeApp() {
         populateLineDropdown();
         generateDataEntryRows();
         setupEventListeners();
-        renderSavedFiles();
+        await renderSavedFiles();
     }
 
     function populateLineDropdown() {
@@ -89,7 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="photo-gallery"></div>
                         <span class="photo-feedback">Belum ada foto.</span>
                         <button class="add-photo-btn" style="display:none;">+ Tambah Foto</button>
-                        <input type="file" accept="image/*,text/plain" class="hidden-file-input" multiple style="display:none;">
+                        <input type="file" accept="image/*" class="hidden-file-input" multiple style="display:none;">
                     </div>
                 </td>
                 <td class="col-action">
@@ -229,17 +332,67 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!files.length) return;
         const tr = e.target.closest('tr');
 
-        Array.from(files).forEach(file => {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const base64String = event.target.result;
-                let photos = JSON.parse(tr.dataset.photos);
-                photos.push({ name: file.name, data: base64String });
-                tr.dataset.photos = JSON.stringify(photos);
-                updatePhotoGallery(tr);
-            };
-            reader.readAsDataURL(file);
+        // Proses semua file secara async dan tunggu selesai
+        const processPromises = Array.from(files).map(async (file) => {
+            // Validasi jumlah foto per pair (periksa ulang di sini)
+            let currentPhotos = JSON.parse(tr.dataset.photos || '[]');
+            if (currentPhotos.length >= MAX_PHOTOS_PER_PAIR) {
+                alert(`Maksimal ${MAX_PHOTOS_PER_PAIR} foto per pair.`);
+                return null;
+            }
+            // Validasi tipe file
+            if (!file.type.startsWith('image/')) {
+                alert(`File ${file.name} bukan gambar. Hanya file gambar yang diperbolehkan.`);
+                return null;
+            }
+
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    let base64String = event.target.result;
+
+                    // Jika ukuran file asli > MAX_FILE_SIZE, coba kompresi
+                    if (file.size > MAX_FILE_SIZE) {
+                        try {
+                            console.log(`Mengompresi ${file.name}...`);
+                            base64String = await compressImage(base64String);
+                            // Periksa ukuran setelah kompresi (estimasi)
+                            const compressedSize = (base64String.length * 3) / 4; // Approx size
+                            if (compressedSize > MAX_FILE_SIZE) {
+                                alert(`File ${file.name} masih terlalu besar setelah kompresi. Maksimal 5MB.`);
+                                resolve(null);
+                                return;
+                            }
+                            alert(`File ${file.name} berhasil dikompresi.`);
+                        } catch (error) {
+                            alert(`Gagal mengompresi ${file.name}. ${error.message}`);
+                            resolve(null);
+                            return;
+                        }
+                    }
+
+                    resolve({ name: file.name, data: base64String });
+                };
+                reader.onerror = () => {
+                    alert(`Gagal membaca file ${file.name}. Pastikan file adalah gambar valid dan tidak rusak.`);
+                    resolve(null);
+                };
+                reader.readAsDataURL(file);
+            });
         });
+
+        // Tunggu semua file selesai diproses
+        Promise.all(processPromises).then((results) => {
+            let photos = JSON.parse(tr.dataset.photos || '[]');
+            results.forEach(result => {
+                if (result && photos.length < MAX_PHOTOS_PER_PAIR) {
+                    photos.push(result);
+                }
+            });
+            tr.dataset.photos = JSON.stringify(photos);
+            updatePhotoGallery(tr);
+        });
+
         e.target.value = '';
     }
 
@@ -402,22 +555,36 @@ async function saveData() {
     
     const pairsData = [];
     DOMElements.dataEntryBody.querySelectorAll('tr').forEach(tr => {
-        pairsData.push({
-            pairNumber: parseInt(tr.dataset.pairNumber),
-            status: tr.querySelector('.status-select').value,
-            defects: JSON.parse(tr.dataset.defects || '[]'),
-            photos: JSON.parse(tr.dataset.photos || '[]')
-        });
+        try {
+            pairsData.push({
+                pairNumber: parseInt(tr.dataset.pairNumber),
+                status: tr.querySelector('.status-select').value,
+                defects: JSON.parse(tr.dataset.defects || '[]'),
+                photos: JSON.parse(tr.dataset.photos || '[]')
+            });
+        } catch (error) {
+            console.error(`Error parsing data for pair ${tr.dataset.pairNumber}:`, error);
+            alert(`Error pada pair ${tr.dataset.pairNumber}: ${error.message}. Data tidak dapat disimpan.`);
+            throw error; // Stop save
+        }
     });
     
     const fileId = `lwt_${now.getTime()}`;
     const fileName = `LWT-${headerData.validationCategory || 'DATA'}-${dateStr}-${timeStr}`;
     const fileData = { id: fileId, name: fileName, header: headerData, pairs: pairsData };
 
-    // Simpan ke penyimpanan lokal
-    const existingData = getSavedData();
-    existingData.push(fileData);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(existingData));
+    // Simpan ke penyimpanan (IndexedDB)
+    const existingData = await getFromDB();
+    
+    // Batasi jumlah file tersimpan (max 10)
+    if (existingData.length >= 10) {
+        // Hapus yang paling lama (id terkecil, asumsikan id time-based)
+        const oldest = existingData.reduce((min, item) => item.id < min.id ? item : min);
+        await deleteFromDB(oldest.id);
+        existingData.splice(existingData.indexOf(oldest), 1);
+    }
+    
+    await saveToDB(fileData);
     
     // >>> TAMPILKAN OVERLAY SEBELUM MEMULAI PROSES ASINKRON
     showLoadingOverlay();
@@ -450,8 +617,19 @@ async function syncToGoogleDrive(fileData) {
     console.log("Mempersiapkan file ZIP untuk diunggah...");
     
     try {
+        if (DOMElements.uploadProgress) DOMElements.uploadProgress.value = 10;
+
         const zip = new JSZip();
         const imgFolder = zip.folder("images");
+
+        // Hitung total foto untuk estimasi ukuran
+        let totalPhotos = 0;
+        fileData.pairs.forEach(pair => {
+            if (pair.photos) totalPhotos += pair.photos.length;
+        });
+        if (totalPhotos > 50) {
+            alert('Peringatan: Banyak foto terdeteksi. Upload mungkin gagal jika ukuran ZIP > 10MB. Pertimbangkan download manual.');
+        }
 
         // 1. Buat konten Excel (sama seperti di fungsi download)
         const excelHeaders = ['Date', 'Auditor', 'Validation Category', 'Style Number', 'Model', 'Line', 'Pair Number', 'OK/NG', 'Photos Attached', 'Defect type 1', 'Defect type 2', 'Defect type 3', 'Defect type 4', 'Defect type 5', 'Defect type 6', 'Defect type 7', 'Defect type 8', 'Defect type 9', 'Defect type 10'];
@@ -485,8 +663,12 @@ async function syncToGoogleDrive(fileData) {
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         zip.file(`${fileData.name}.xlsx`, excelBuffer);
 
+        if (DOMElements.uploadProgress) DOMElements.uploadProgress.value = 30;
+
        // 2. Generate ZIP sebagai blob, lalu konversi ke base64 (Ini perlu dijadikan await)
         const zipBlob = await zip.generateAsync({ type: "blob" });
+
+        if (DOMElements.uploadProgress) DOMElements.uploadProgress.value = 60;
 
         // Menggunakan Promise untuk menunggu FileReader selesai
         const zipBase64 = await new Promise((resolve, reject) => {
@@ -498,6 +680,8 @@ async function syncToGoogleDrive(fileData) {
             };
             reader.onerror = reject;
         });
+
+        if (DOMElements.uploadProgress) DOMElements.uploadProgress.value = 80;
 
         // 3. Kirim data ke Google Apps Script
         const payload = {
@@ -513,6 +697,8 @@ async function syncToGoogleDrive(fileData) {
         });
 
         const response = await res.json();
+
+        if (DOMElements.uploadProgress) DOMElements.uploadProgress.value = 100;
 
         if (response.success) {
             console.log('Upload berhasil!', response.message);
@@ -539,30 +725,30 @@ async function syncToGoogleDrive(fileData) {
         DOMElements.dataEntryBody.querySelectorAll('tr').forEach(resetRow);
     }
     
-    function handleSavedFilesActions(e) {
+    async function handleSavedFilesActions(e) {
         const target = e.target;
         const fileId = target.dataset.id;
         if (!fileId) return;
 
         if (target.classList.contains('download-btn')) {
-            handleDownload(fileId);
+            const fileData = (await getSavedData()).find(item => item.id === fileId);
+            if (!fileData) return alert('Data file tidak ditemukan!');
+            await handleDownload(fileData);
         } else if (target.classList.contains('delete-btn')) {
             showModal({
                 title: 'Konfirmasi Hapus File',
                 body: `<p>Apakah Anda yakin ingin menghapus file ini secara permanen?</p>`,
                 confirmText: 'Ya, Hapus',
-                onConfirm: () => {
-                    deleteDataFromStorage(fileId);
-                    renderSavedFiles();
+                onConfirm: async () => {
+                    await deleteFromDB(fileId);
+                    await renderSavedFiles();
                     hideModal();
                 }
             });
         }
     }
 
-    async function handleDownload(fileId) {
-        const fileData = getSavedData().find(item => item.id === fileId);
-        if (!fileData) return alert('Data file tidak ditemukan!');
+    async function handleDownload(fileData) {
         
         const zip = new JSZip();
         const imgFolder = zip.folder("images");
@@ -753,8 +939,8 @@ async function syncToGoogleDrive(fileData) {
         return [headers, dataRow];
     }
 
-    function renderSavedFiles() {
-        const data = getSavedData();
+    async function renderSavedFiles() {
+        const data = await getSavedData();
         const listElement = DOMElements.savedFilesList;
         listElement.innerHTML = '';
         
@@ -776,14 +962,8 @@ async function syncToGoogleDrive(fileData) {
         });
     }
 
-    function deleteDataFromStorage(fileId) {
-        let existingData = getSavedData();
-        const updatedData = existingData.filter(item => item.id !== fileId);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData));
-    }
-    
     function getSavedData() {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        return getFromDB();
     }
 
     // =========================================================================
@@ -820,6 +1000,10 @@ async function syncToGoogleDrive(fileData) {
         if (DOMElements.loadingOverlay) {
             DOMElements.loadingOverlay.style.display = 'flex';
         }
+        if (DOMElements.uploadProgress) {
+            DOMElements.uploadProgress.style.display = 'block';
+            DOMElements.uploadProgress.value = 0;
+        }
     }
 
     /**
@@ -828,6 +1012,9 @@ async function syncToGoogleDrive(fileData) {
     function hideLoadingOverlay() {
         if (DOMElements.loadingOverlay) {
             DOMElements.loadingOverlay.style.display = 'none';
+        }
+        if (DOMElements.uploadProgress) {
+            DOMElements.uploadProgress.style.display = 'none';
         }
     }
     // =========================================================================
