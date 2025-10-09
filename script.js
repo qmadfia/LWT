@@ -16,8 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx05PeKZfdSM6qSNa9tSFpqcjeBrckNQ8KdWDcKOXZ_t4zlek7ycCrx6xXOxfstwH7grw/exec';
 
     // Konstanta untuk batasan upload
-    const MAX_PHOTOS_PER_PAIR = 5;
-    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    const MAX_PHOTOS_PER_PAIR = 10;
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 5MB
     const MAX_WIDTH = 1024;
     const MAX_HEIGHT = 1024;
 
@@ -586,25 +586,17 @@ async function saveData() {
     
     await saveToDB(fileData);
     
-    // >>> TAMPILKAN OVERLAY SEBELUM MEMULAI PROSES ASINKRON
-    showLoadingOverlay();
+    // Sembunyikan loading overlay
+    hideLoadingOverlay();
     
-    try {
-        console.log(`Data lokal ${fileName} berhasil disimpan. Mencoba sinkronisasi ke Google Drive...`);
-        // Menggunakan 'await' untuk menunggu proses sinkronisasi dan konversi file selesai
-        await syncToGoogleDrive(fileData);
-        
-    } catch (error) {
-        // Notifikasi kegagalan sinkronisasi (jika terjadi)
-        console.error('Sinkronisasi gagal:', error);
-        alert('Data berhasil disimpan secara lokal, tetapi GAGAL sinkronisasi ke Google Drive. Periksa konsol untuk detail atau coba download manual.');
-    } finally {
-        // >>> SEMBUNYIKAN OVERLAY SETELAH SEMUA PROSES SELESAI
-        hideLoadingOverlay();
-    }
+    // Notifikasi sukses
+    alert('Data berhasil disimpan secara lokal!');
     
-    renderSavedFiles();
+    // Reset form
     resetFullForm();
+    
+    // Render ulang daftar file tersimpan
+    await renderSavedFiles();
 }
 
 // TAMBAHKAN FUNGSI BARU INI KE DALAM script.js
