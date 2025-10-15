@@ -2785,5 +2785,6 @@ const defectTypes = [
     'No-sew Quality',
     'Plate/shank damage',
     'Size mis-match/ Wrong size/Wrong C/O label/Missing UPC label',
+    'Inconsistent Stitching',
     'Stitching (missing or gaps) - Broken / loose stitched'
 ];
