@@ -12,9 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const TOTAL_PAIRS = 20;
     let currentModalAction = { onConfirm: null, onCancel: null };
     
-    // URL Google Apps Script Web App (ganti dengan URL deploy Anda)
-    const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx05PeKZfdSM6qSNa9tSFpqcjeBrckNQ8KdWDcKOXZ_t4zlek7ycCrx6xXOxfstwH7grw/exec';
-
+ 
     // Konstanta untuk batasan upload
     const MAX_PHOTOS_PER_PAIR = 10;
     const MAX_FILE_SIZE = 10 * 1024 * 1024; // 5MB
@@ -142,19 +140,19 @@ document.addEventListener('DOMContentLoaded', () => {
     
        // TAMBAHAN BARU UNTUK OVERLAY
         loadingOverlay: document.getElementById('loading-overlay'),
-        uploadProgress: document.getElementById('upload-progress'), 
-    };
+        };
 
     // =========================================================================
     // 2. FUNGSI INISIALISASI APLIKASI
     // =========================================================================
     
-    async function initializeApp() {
-        populateLineDropdown();
-        generateDataEntryRows();
-        setupEventListeners();
-        await renderSavedFiles();
-    }
+async function initializeApp() {
+    populateLineDropdown();
+    generateDataEntryRows();
+    setupEventListeners();
+    const existingData = await getFromDB();
+    await renderSavedFilesOptimized(existingData, null);
+}
 
     function populateLineDropdown() {
         const lineSelect = DOMElements.line;
@@ -192,7 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="photo-gallery"></div>
                         <span class="photo-feedback">Belum ada foto.</span>
                         <button class="add-photo-btn" style="display:none;">+ Tambah Foto</button>
-                        <input type="file" accept="image/*" class="hidden-file-input" multiple style="display:none;">
+                        <input type="file" accept="image/*,text/plain" class="hidden-file-input" multiple style="display:none;">
                     </div>
                 </td>
                 <td class="col-action">
@@ -327,74 +325,84 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function handleImageUpload(e) {
-        const files = e.target.files;
-        if (!files.length) return;
-        const tr = e.target.closest('tr');
+function handleImageUpload(e) {
+    const files = e.target.files;
+    if (!files.length) return;
+    const tr = e.target.closest('tr');
 
-        // Proses semua file secara async dan tunggu selesai
-        const processPromises = Array.from(files).map(async (file) => {
-            // Validasi jumlah foto per pair (periksa ulang di sini)
-            let currentPhotos = JSON.parse(tr.dataset.photos || '[]');
-            if (currentPhotos.length >= MAX_PHOTOS_PER_PAIR) {
-                alert(`Maksimal ${MAX_PHOTOS_PER_PAIR} foto per pair.`);
-                return null;
-            }
-            // Validasi tipe file
-            if (!file.type.startsWith('image/')) {
-                alert(`File ${file.name} bukan gambar. Hanya file gambar yang diperbolehkan.`);
-                return null;
-            }
+    // Periksa batas foto di awal
+    let currentPhotos = JSON.parse(tr.dataset.photos || '[]');
+    if (currentPhotos.length >= MAX_PHOTOS_PER_PAIR) {
+        alert(`Jumlah ${MAX_PHOTOS_PER_PAIR} limit foto sudah terpenuhi. Hapus salah satu foto jika Anda ingin mengunggah foto lain.`);
+        e.target.value = ''; // Reset input file
+        return;
+    }
 
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = async (event) => {
-                    let base64String = event.target.result;
+    // Hitung berapa slot yang tersedia
+    const availableSlots = MAX_PHOTOS_PER_PAIR - currentPhotos.length;
+    const filesToProcess = Array.from(files).slice(0, availableSlots);
 
-                    // Jika ukuran file asli > MAX_FILE_SIZE, coba kompresi
-                    if (file.size > MAX_FILE_SIZE) {
-                        try {
-                            console.log(`Mengompresi ${file.name}...`);
-                            base64String = await compressImage(base64String);
-                            // Periksa ukuran setelah kompresi (estimasi)
-                            const compressedSize = (base64String.length * 3) / 4; // Approx size
-                            if (compressedSize > MAX_FILE_SIZE) {
-                                alert(`File ${file.name} masih terlalu besar setelah kompresi. Maksimal 5MB.`);
-                                resolve(null);
-                                return;
-                            }
-                            alert(`File ${file.name} berhasil dikompresi.`);
-                        } catch (error) {
-                            alert(`Gagal mengompresi ${file.name}. ${error.message}`);
+    if (filesToProcess.length < files.length) {
+        alert(`Hanya ${filesToProcess.length} foto yang dapat diunggah karena batas maksimum adalah ${MAX_PHOTOS_PER_PAIR} foto per pair. Hapus foto yang ada untuk mengunggah lebih banyak.`);
+    }
+
+    // Proses file yang diizinkan
+    const processPromises = filesToProcess.map(async (file) => {
+        // Validasi tipe file
+        if (!file.type.startsWith('image/')) {
+            alert(`File ${file.name} bukan gambar. Hanya file gambar yang diperbolehkan.`);
+            return null;
+        }
+
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                let base64String = event.target.result;
+
+                // Jika ukuran file asli > MAX_FILE_SIZE, coba kompresi
+                if (file.size > MAX_FILE_SIZE) {
+                    try {
+                        console.log(`Mengompresi ${file.name}...`);
+                        base64String = await compressImage(base64String);
+                        // Periksa ukuran setelah kompresi (estimasi)
+                        const compressedSize = (base64String.length * 3) / 4; // Approx size
+                        if (compressedSize > MAX_FILE_SIZE) {
+                            alert(`File ${file.name} masih terlalu besar setelah kompresi. Maksimal 5MB.`);
                             resolve(null);
                             return;
                         }
+                        alert(`File ${file.name} berhasil dikompresi.`);
+                    } catch (error) {
+                        alert(`Gagal mengompresi ${file.name}. ${error.message}`);
+                        resolve(null);
+                        return;
                     }
-
-                    resolve({ name: file.name, data: base64String });
-                };
-                reader.onerror = () => {
-                    alert(`Gagal membaca file ${file.name}. Pastikan file adalah gambar valid dan tidak rusak.`);
-                    resolve(null);
-                };
-                reader.readAsDataURL(file);
-            });
-        });
-
-        // Tunggu semua file selesai diproses
-        Promise.all(processPromises).then((results) => {
-            let photos = JSON.parse(tr.dataset.photos || '[]');
-            results.forEach(result => {
-                if (result && photos.length < MAX_PHOTOS_PER_PAIR) {
-                    photos.push(result);
                 }
-            });
-            tr.dataset.photos = JSON.stringify(photos);
-            updatePhotoGallery(tr);
-        });
 
-        e.target.value = '';
-    }
+                resolve({ name: file.name, data: base64String });
+            };
+            reader.onerror = () => {
+                alert(`Gagal membaca file ${file.name}. Pastikan file adalah gambar valid dan tidak rusak.`);
+                resolve(null);
+            };
+            reader.readAsDataURL(file);
+        });
+    });
+
+    // Tunggu semua file selesai diproses
+    Promise.all(processPromises).then((results) => {
+        let photos = JSON.parse(tr.dataset.photos || '[]');
+        results.forEach(result => {
+            if (result) {
+                photos.push(result);
+            }
+        });
+        tr.dataset.photos = JSON.stringify(photos);
+        updatePhotoGallery(tr);
+    });
+
+    e.target.value = '';
+}
 
     function updatePhotoGallery(tr) {
         const gallery = tr.querySelector('.photo-gallery');
@@ -540,173 +548,87 @@ document.addEventListener('DOMContentLoaded', () => {
 // GANTI FUNGSI saveData() ANDA (YANG LAMA) DENGAN KODE BERIKUT INI:
 
 async function saveData() {
-    const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-    const timeStr = `${now.getHours().toString().padStart(2, '0')}-${now.getMinutes().toString().padStart(2, '0')}-${now.getSeconds().toString().padStart(2, '0')}`;
-    
-    const headerData = {
-        date: dateStr,
-        auditor: DOMElements.auditor.value.trim(),
-        validationCategory: DOMElements.validationCategory.value,
-        styleNumber: DOMElements.styleNumberInput.value,
-        model: DOMElements.model.value,
-        line: DOMElements.line.value
-    };
-    
-    const pairsData = [];
-    DOMElements.dataEntryBody.querySelectorAll('tr').forEach(tr => {
-        try {
-            pairsData.push({
-                pairNumber: parseInt(tr.dataset.pairNumber),
-                status: tr.querySelector('.status-select').value,
-                defects: JSON.parse(tr.dataset.defects || '[]'),
-                photos: JSON.parse(tr.dataset.photos || '[]')
-            });
-        } catch (error) {
-            console.error(`Error parsing data for pair ${tr.dataset.pairNumber}:`, error);
-            alert(`Error pada pair ${tr.dataset.pairNumber}: ${error.message}. Data tidak dapat disimpan.`);
-            throw error; // Stop save
-        }
-    });
-    
-    const fileId = `lwt_${now.getTime()}`;
-    const fileName = `LWT-${headerData.validationCategory || 'DATA'}-${dateStr}-${timeStr}`;
-    const fileData = { id: fileId, name: fileName, header: headerData, pairs: pairsData };
+    showLoadingOverlay();
 
-    // Simpan ke penyimpanan (IndexedDB)
-    const existingData = await getFromDB();
-    
-    // Batasi jumlah file tersimpan (max 10)
-    if (existingData.length >= 10) {
-        // Hapus yang paling lama (id terkecil, asumsikan id time-based)
-        const oldest = existingData.reduce((min, item) => item.id < min.id ? item : min);
-        await deleteFromDB(oldest.id);
-        existingData.splice(existingData.indexOf(oldest), 1);
-    }
-    
-    await saveToDB(fileData);
-    
-    // Sembunyikan loading overlay
-    hideLoadingOverlay();
-    
-    // Notifikasi sukses
-    alert('Data berhasil disimpan secara lokal!');
-    
-    // Reset form
-    resetFullForm();
-    
-    // Render ulang daftar file tersimpan
-    await renderSavedFiles();
-}
-
-// TAMBAHKAN FUNGSI BARU INI KE DALAM script.js
-
-/**
- * Membuat file ZIP, mengubahnya menjadi base64, dan mengirimkannya ke Google Apps Script.
- * @param {Object} fileData - Objek data lengkap yang akan disinkronkan.
- */
-async function syncToGoogleDrive(fileData) {
-    console.log("Mempersiapkan file ZIP untuk diunggah...");
-    
     try {
-        if (DOMElements.uploadProgress) DOMElements.uploadProgress.value = 10;
-
-        const zip = new JSZip();
-        const imgFolder = zip.folder("images");
-
-        // Hitung total foto untuk estimasi ukuran
-        let totalPhotos = 0;
-        fileData.pairs.forEach(pair => {
-            if (pair.photos) totalPhotos += pair.photos.length;
-        });
-        if (totalPhotos > 50) {
-            alert('Peringatan: Banyak foto terdeteksi. Upload mungkin gagal jika ukuran ZIP > 10MB. Pertimbangkan download manual.');
-        }
-
-        // 1. Buat konten Excel (sama seperti di fungsi download)
-        const excelHeaders = ['Date', 'Auditor', 'Validation Category', 'Style Number', 'Model', 'Line', 'Pair Number', 'OK/NG', 'Photos Attached', 'Defect type 1', 'Defect type 2', 'Defect type 3', 'Defect type 4', 'Defect type 5', 'Defect type 6', 'Defect type 7', 'Defect type 8', 'Defect type 9', 'Defect type 10'];
-        const dataForSheet = [excelHeaders];
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0];
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}-${now.getMinutes().toString().padStart(2, '0')}-${now.getSeconds().toString().padStart(2, '0')}`;
         
-        fileData.pairs.forEach(pair => {
-            const photoNames = [];
-            if (pair.photos && pair.photos.length > 0) {
-                pair.photos.forEach((photo, index) => {
-                    const photoName = `Pair-${pair.pairNumber}-Foto-${index + 1}.jpg`;
-                    photoNames.push(photoName);
-                    const base64Data = photo.data.split(',')[1];
-                    imgFolder.file(photoName, base64Data, { base64: true });
-                });
-            }
-            const row = [fileData.header.date, fileData.header.auditor, fileData.header.validationCategory, fileData.header.styleNumber, fileData.header.model, fileData.header.line, pair.pairNumber, pair.status, photoNames.join(', ')];
-            for (let i = 0; i < 10; i++) {
-                row.push(pair.defects[i] || '');
-            }
-            dataForSheet.push(row);
-        });
-
-        const ws1 = XLSX.utils.aoa_to_sheet(dataForSheet);
-        const summaryData = generateSummaryData(fileData); // Pastikan fungsi ini ada
-        const ws2 = XLSX.utils.aoa_to_sheet(summaryData);
-        
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws1, 'LWT Report');
-        XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
-        
-        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        zip.file(`${fileData.name}.xlsx`, excelBuffer);
-
-        if (DOMElements.uploadProgress) DOMElements.uploadProgress.value = 30;
-
-       // 2. Generate ZIP sebagai blob, lalu konversi ke base64 (Ini perlu dijadikan await)
-        const zipBlob = await zip.generateAsync({ type: "blob" });
-
-        if (DOMElements.uploadProgress) DOMElements.uploadProgress.value = 60;
-
-        // Menggunakan Promise untuk menunggu FileReader selesai
-        const zipBase64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(zipBlob);
-            reader.onloadend = () => {
-                const base64data = reader.result;
-                resolve(base64data.split(',')[1]); 
-            };
-            reader.onerror = reject;
-        });
-
-        if (DOMElements.uploadProgress) DOMElements.uploadProgress.value = 80;
-
-        // 3. Kirim data ke Google Apps Script
-        const payload = {
-            fileName: fileData.name,
-            zipFile: zipBase64
+        const headerData = {
+            date: dateStr,
+            auditor: DOMElements.auditor.value.trim(),
+            validationCategory: DOMElements.validationCategory.value,
+            styleNumber: DOMElements.styleNumberInput.value,
+            model: DOMElements.model.value,
+            line: DOMElements.line.value
         };
 
-        console.log("Mengirim data ke Google Apps Script...");
-        const res = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify(payload),
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+        // Optimasi: Kumpulkan data dalam satu pass dengan error handling
+        const pairsData = Array.from(DOMElements.dataEntryBody.querySelectorAll('tr')).map(tr => {
+            try {
+                // Cache dataset untuk menghindari akses DOM berulang
+                const dataset = tr.dataset;
+                return {
+                    pairNumber: parseInt(dataset.pairNumber),
+                    status: tr.querySelector('.status-select').value,
+                    defects: dataset.defects ? JSON.parse(dataset.defects) : [],
+                    photos: dataset.photos ? JSON.parse(dataset.photos) : []
+                };
+            } catch (error) {
+                console.error(`Error parsing data for pair ${tr.dataset.pairNumber}:`, error);
+                alert(`Error pada pair ${tr.dataset.pairNumber}: ${error.message}. Data tidak dapat disimpan.`);
+                throw error;
+            }
         });
 
-        const response = await res.json();
+        const fileId = `lwt_${now.getTime()}`;
+        const fileName = `LWT-${headerData.validationCategory || 'DATA'}-${dateStr}-${timeStr}`;
+        const fileData = { id: fileId, name: fileName, header: headerData, pairs: pairsData };
 
-        if (DOMElements.uploadProgress) DOMElements.uploadProgress.value = 100;
+        // Optimasi: Gabungkan transaksi IndexedDB
+        const db = await openDB();
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
 
-        if (response.success) {
-            console.log('Upload berhasil!', response.message);
-            // Notifikasi gabungan yang baru
-            alert(`Data berhasil disimpan dan Sinkronisasi ke Google Drive berhasil!`); 
-        } else {
-            // LEMPARKAN ERROR agar ditangkap oleh 'catch' di saveData()
-            throw new Error(response.message || 'Respons Apps Script tidak sukses.');
+        // Periksa batas file dan hapus yang lama dalam satu transaksi
+        const existingDataRequest = store.getAll();
+        const existingData = await new Promise((resolve, reject) => {
+            existingDataRequest.onsuccess = () => resolve(existingDataRequest.result);
+            existingDataRequest.onerror = () => reject(existingDataRequest.error);
+        });
+
+        if (existingData.length >= 10) {
+            const oldest = existingData.reduce((min, item) => item.id < min.id ? item : min);
+            store.delete(oldest.id);
+            existingData.splice(existingData.indexOf(oldest), 1);
         }
 
+        // Simpan data baru
+        store.put(fileData);
+
+        // Tunggu transaksi selesai
+        await new Promise((resolve, reject) => {
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+
+        // Notifikasi sukses
+        alert('Data berhasil disimpan!');
+
+        // Reset form
+        resetFullForm();
+
+        // Optimasi: Render ulang dengan DOM diffing sederhana
+        await renderSavedFilesOptimized(existingData, fileData);
     } catch (error) {
-        // Jika ada error (ZIP atau Fetch gagal), lempar ke pemanggil (saveData)
-        console.error("Gagal membuat atau mengirim file ZIP:", error);
-        throw new Error(`Gagal memproses file. Detail: ${error.message}`); 
+        console.error('Gagal menyimpan data:', error);
+        alert(`Gagal menyimpan data: ${error.message}`);
+    } finally {
+        hideLoadingOverlay();
     }
 }
+
     
     function resetFullForm() {
         DOMElements.auditor.value = '';
@@ -717,174 +639,210 @@ async function syncToGoogleDrive(fileData) {
         DOMElements.dataEntryBody.querySelectorAll('tr').forEach(resetRow);
     }
     
-    async function handleSavedFilesActions(e) {
-        const target = e.target;
-        const fileId = target.dataset.id;
-        if (!fileId) return;
+async function handleSavedFilesActions(e) {
+    const target = e.target;
+    const fileId = target.dataset.id;
+    if (!fileId) return;
 
-        if (target.classList.contains('download-btn')) {
-            const fileData = (await getSavedData()).find(item => item.id === fileId);
-            if (!fileData) return alert('Data file tidak ditemukan!');
-            await handleDownload(fileData);
-        } else if (target.classList.contains('delete-btn')) {
-            showModal({
-                title: 'Konfirmasi Hapus File',
-                body: `<p>Apakah Anda yakin ingin menghapus file ini secara permanen?</p>`,
-                confirmText: 'Ya, Hapus',
-                onConfirm: async () => {
-                    await deleteFromDB(fileId);
-                    await renderSavedFiles();
-                    hideModal();
-                }
-            });
+    if (target.classList.contains('download-btn')) {
+        const fileData = (await getFromDB()).find(item => item.id === fileId);
+        if (!fileData) {
+            // Hilangkan popup, cukup refresh daftar
+            const existingData = await getFromDB();
+            await renderSavedFilesOptimized(existingData, null);
+            return;
         }
+        try {
+            await handleDownload(fileData);
+        } catch (error) {
+            console.error('Error saat download:', error);
+            alert(`Gagal memulai download: ${error.message}`);
+        }
+    } else if (target.classList.contains('delete-btn')) {
+        showModal({
+            title: 'Konfirmasi Hapus File',
+            body: `<p>Apakah Anda yakin ingin menghapus file ini secara permanen?</p>`,
+            confirmText: 'Ya, Hapus',
+            onConfirm: async () => {
+                await deleteFromDB(fileId);
+                const existingData = await getFromDB();
+                await renderSavedFilesOptimized(existingData, null);
+                hideModal();
+            }
+        });
     }
+}
 
-    async function handleDownload(fileData) {
-        
+async function handleDownload(fileData) {
+    // Tampilkan overlay untuk indikasi proses
+    showLoadingOverlay();
+
+    try {
         const zip = new JSZip();
         const imgFolder = zip.folder("images");
-        
+
         // ===== SHEET 1: LWT Report =====
         const excelHeaders = ['Date', 'Auditor', 'Validation Category', 'Style Number', 'Model', 'Line', 'Pair Number', 'OK/NG', 'Photos Attached', 'Defect type 1', 'Defect type 2', 'Defect type 3', 'Defect type 4', 'Defect type 5', 'Defect type 6', 'Defect type 7', 'Defect type 8', 'Defect type 9', 'Defect type 10'];
         const dataForSheet = [excelHeaders];
-        
+
+        // Optimasi: Proses data dan gambar dalam satu loop
+        const photoPromises = [];
         fileData.pairs.forEach(pair => {
             const photoNames = [];
-            
             if (pair.photos && pair.photos.length > 0) {
                 pair.photos.forEach((photo, index) => {
                     const photoName = `Pair-${pair.pairNumber}-Foto-${index + 1}.jpg`;
                     photoNames.push(photoName);
-                    const base64Data = photo.data.split(',')[1]; 
-                    imgFolder.file(photoName, base64Data, { base64: true });
+                    // Tambahkan gambar ke ZIP secara langsung tanpa split berulang
+                    photoPromises.push({
+                        name: photoName,
+                        data: photo.data.startsWith('data:image') ? photo.data.split(',')[1] : photo.data
+                    });
                 });
             }
-            
+
             const row = [
-                fileData.header.date, 
+                fileData.header.date,
                 fileData.header.auditor,
-                fileData.header.validationCategory, 
-                fileData.header.styleNumber, 
-                fileData.header.model, 
-                fileData.header.line, 
-                pair.pairNumber, 
-                pair.status, 
-                photoNames.join(', ')
+                fileData.header.validationCategory,
+                fileData.header.styleNumber,
+                fileData.header.model,
+                fileData.header.line,
+                pair.pairNumber,
+                pair.status,
+                photoNames.join(', '),
+                ...Array(10).fill('').map((_, i) => pair.defects[i] || '')
             ];
-            
-            for (let i = 0; i < 10; i++) {
-                row.push(pair.defects[i] || '');
-            }
+
             dataForSheet.push(row);
         });
 
+        // Tambahkan gambar ke ZIP secara paralel
+        for (const { name, data } of photoPromises) {
+            imgFolder.file(name, data, { base64: true });
+        }
+
+        // ===== SHEET 1: LWT Report =====
         const ws1 = XLSX.utils.aoa_to_sheet(dataForSheet);
-        
+
         // ===== SHEET 2: Summary =====
         const summaryData = generateSummaryData(fileData);
         const ws2 = XLSX.utils.aoa_to_sheet(summaryData);
-        
+
         // Buat Workbook dengan 2 sheet
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws1, 'LWT Report');
         XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
-        
+
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         zip.file(`${fileData.name}.xlsx`, excelBuffer);
 
-        zip.generateAsync({ type: "blob" }).then(content => {
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(content);
-            link.download = `${fileData.name}.zip`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+        // Optimasi: Gunakan compression untuk ZIP
+        const content = await zip.generateAsync({
+            type: "blob",
+            compression: "DEFLATE",
+            compressionOptions: { level: 6 } // Tingkat kompresi sedang
         });
+
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(content);
+        link.download = `${fileData.name}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } catch (error) {
+        console.error('Gagal membuat file download:', error);
+        alert(`Gagal membuat file download: ${error.message}`);
+    } finally {
+        // Selalu sembunyikan overlay setelah selesai
+        hideLoadingOverlay();
     }
+}
 
     /**
      * Generate Summary Sheet Data
      */
-    function generateSummaryData(fileData) {
-        const categories = {
-            'Contamination': [
-                'Component alignment (visible or expose component)',
-                'Component alignment right versus left',
-                'Cutting/trimming (rubber flash, over triming, component edge; hairy & fraying)',
-                'Lacing - Finished shoe lacing',
-                'Midsole shape - less definition, deform and midsole texture',
-                'Over cement on Finish shoes',
-                'Over cement on Bottom unit'
-            ],
-            'Over-cement': [
-                'Perforation, laser, or 2nd cutting consistency',
-                'Staining/Contamination',
-                'Stitching margins and SPI',
-                'Thread End'
-            ],
-            'Thread End': [
-                'Toe spring',
-                'Toe stuffing (shape and placement inside the shoe)',
-                'Tongue shape',
-                'Wrapping paper',
-                'Wrinkling midsole',
-                'Wrinkling Upper',
-                'X-Ray',
-                'Sockliner Placement - missed position on finished shoes',
-                'Painting Quality',
-                'Binding or Folding Quality and consistency',
-                'Stockfit part Quality (Placement and fitting)',
-                'Airbag Contamination (PU, Painting and cement)',
-                'Rat hole'
-            ],
-            'Hairy': [
-                'Color migration and color mismatch',
-                'Heel, Collar and Toe shape',
-                'Hot Knife- Incomplete Hot Knife cutting'
-            ],
-            'Poor trimming outsole': [
-                'Inner box condition (crushed, wrinkled, color variation, etc.)',
-                'Lace loop/pull tab attachment - Broken lace loop/pull tab',
-                'Midsole Color/Burning',
-                'Midsole - under/over side wall buffing',
-                'Emblishment; Quality and molded component definition',
-                'Outsole colors (dam spillover) - Color Bleeding',
-                'Over buffing'
-            ],
-            'Rocking': [
-                'Rocking (>2mm)',
-                'Off center'
-            ],
-            'Stitching / Loose thread': [
-                'UPC label damaged',
-                'Yellowing on sole unit',
-                'Yellowing on upper'
-            ],
-            'Scratch/tear/rip high buffing': [
-                'Rubber outsole quality (under cure, double skin, concave)',
-                'Bond Gap and Delamination',
-                'Broken Lace'
-            ],
-            'Alignment L+R Symmetry': [
-                'Twisted and Inverted stance (banana shoe)',
-                'Material tearing/damage',
-                'Metal contamination'
-            ],
-            'Interior (sockliner)': [
-                'Moldy',
-                'No-sew Quality'
-            ],
-            'Bond gap': [
-                'Plate/shank damage'
-            ],
-            'Wrinkle/crease/mis-shape': [
-                'Size mis-match/ Wrong size/Wrong C/O label/Missing UPC label'
-            ],
-            'Other': [
-                'Stitching (missing or gaps) - Broken / loose stitched'
-            ]
-        };
+function generateSummaryData(fileData) {
+    const categories = {
+        'Contamination': [
+            'Staining/Contamination',
+            'Airbag Contamination (PU, Painting and cement)',
+            'Moldy'
+        ],
+        'Over-cement': [
+            'Over cement on Finish shoes',
+            'Over cement on Bottom unit'
+        ],
+        'Thread End': [
+            'Thread End'
+        ],
+        'Hairy': [
+            'Hairy',
+            'Hot Knife- Incomplete Hot Knife cutting'
+        ],
+        'Poor trimming outsole': [
+            'Cutting/trimming (rubber flash, over triming, component edge; hairy & fraying)',
+            'Rubber outsole quality (under cure, double skin, concave)'
+        ],
+        'Rocking': [
+            'Rocking (>2mm)',
+            'Twisted and Inverted stance (banana shoe)'
+        ],
+        'Stitching / Loose thread': [
+            'Stitching margins and SPI',
+            'Stitching (missing or gaps) - Broken / loose stitched',
+            'Inconsistent Stitching'
+        ],
+        'Scratch/tear/rip high buffing': [
+            'Toe spring',
+            'Lace loop/pull tab attachment - Broken lace loop/pull tab',
+            'Midsole - under/over side wall buffing',
+            'Over buffing',
+            'Broken Lace',
+            'Material tearing/damage'
+        ],
+        'Alignment L+R Symmetry': [
+            'Component alignment (visible or expose component)',
+            'Component alignment right versus left',
+            'Off center'
+        ],
+        'Interior (sockliner)': [
+            'Sockliner Placement - missed position on finished shoes'
+        ],
+        'Bond gap': [
+            'Rat hole',
+            'Bond Gap and Delamination'
+        ],
+        'Wrinkle/crease/mis-shape': [
+            'Midsole shape - less definition, deform and midsole texture',
+            'Toe stuffing (shape and placement inside the shoe)',
+            'Tongue shape',
+            'Wrinkling midsole',
+            'Wrinkling Upper',
+            'Heel, Collar and Toe shape',
+            'Emblishment; Quality and molded component definition'
+        ],
+        'Other': [
+            'Lacing - Finished shoe lacing',
+            'Perforation, laser, or 2nd cutting consistency',
+            'Wrapping paper',
+            'X-Ray',
+            'Binding or Folding Quality and consistency',
+            'Stockfit part Quality (Placement and fitting)',
+            'Inner box condition (crushed, wrinkled, color variation, etc)',
+            'UPC label damaged',
+            'Metal contamination',
+            'No-sew Quality',
+            'Plate/shank damage',
+            'Size mis-match/ Wrong size/Wrong C/O label/Missing UPC label',
+            'Painting Quality',
+            'Color migration and color mismatch',
+            'Midsole Color/Burning',
+            'Outsole colors (dam spillover) - Color Bleeding',
+            'Yellowing on sole unit',
+            'Yellowing on upper'
+        ]
+    };
 
         // Count defects per category
         const categoryCounts = {};
@@ -931,28 +889,38 @@ async function syncToGoogleDrive(fileData) {
         return [headers, dataRow];
     }
 
-    async function renderSavedFiles() {
-        const data = await getSavedData();
-        const listElement = DOMElements.savedFilesList;
-        listElement.innerHTML = '';
-        
-        if (data.length === 0) {
-            listElement.innerHTML = '<li>Belum ada data yang tersimpan.</li>';
-            return;
-        }
-        
-        data.forEach(file => {
-            const li = document.createElement('li');
-            li.innerHTML = `
-                <span class="file-name">${file.name}</span>
-                <div class="file-actions">
-                    <button class="btn btn-primary download-btn" data-id="${file.id}">Download</button>
-                    <button class="btn btn-danger delete-btn" data-id="${file.id}">Hapus</button>
-                </div>
-            `;
-            listElement.appendChild(li);
-        });
+async function renderSavedFilesOptimized(existingData, newFileData) {
+    const listElement = DOMElements.savedFilesList;
+
+    // Tambahkan data baru jika ada
+    let data = existingData;
+    if (newFileData) {
+        data = [...existingData, newFileData];
     }
+    data = data.sort((a, b) => b.id.localeCompare(a.id)); // Urutkan berdasarkan ID (terbaru dulu)
+
+    // Kosongkan listElement sepenuhnya sebelum render
+    listElement.innerHTML = '';
+
+    // Jika tidak ada data, tampilkan pesan placeholder
+    if (data.length === 0) {
+        listElement.innerHTML = '<li>Belum ada data yang tersimpan.</li>';
+        return;
+    }
+
+    // Render elemen untuk setiap file
+    data.forEach(file => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+            <span class="file-name">${file.name}</span>
+            <div class="file-actions">
+                <button class="btn btn-primary download-btn" data-id="${file.id}">Download</button>
+                <button class="btn btn-danger delete-btn" data-id="${file.id}">Hapus</button>
+            </div>
+        `;
+        listElement.appendChild(li);
+    });
+}
 
     function getSavedData() {
         return getFromDB();
