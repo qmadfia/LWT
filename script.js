@@ -829,7 +829,7 @@ function generateSummaryData(fileData) {
             'X-Ray',
             'Binding or Folding Quality and consistency',
             'Stockfit part Quality (Placement and fitting)',
-            'Inner box condition (crushed, wrinkled, color variation, etc)',
+            'Inner box condition (crushed, wrinkled, color variation, etc.)',
             'UPC label damaged',
             'Metal contamination',
             'No-sew Quality',
