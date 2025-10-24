@@ -440,72 +440,136 @@ function handleImageUpload(e) {
         resetPhotosForRow(tr);
     }
 
-    function resetDefectsForRow(tr) {
-        tr.dataset.defects = '[]';
-        updateDefectTags(tr);
-    }
+function resetDefectsForRow(tr) {
+    tr.dataset.defects = '[]';
+    tr.dataset.otherDefects = '[]'; // TAMBAHKAN BARIS INI
+    updateDefectTags(tr);
+}
 
     function resetPhotosForRow(tr) {
         tr.dataset.photos = '[]';
         updatePhotoGallery(tr);
     }
 
-    function showDefectSelectionModal(tr) {
-        const currentDefects = JSON.parse(tr.dataset.defects || '[]');
-        let optionsHTML = defectTypes.map(defect => `
+function showDefectSelectionModal(tr) {
+    const currentDefects = JSON.parse(tr.dataset.defects || '[]');
+    const currentOtherDefects = JSON.parse(tr.dataset.otherDefects || '[]'); // Data input manual
+    
+    let optionsHTML = defectTypes.map(defect => {
+        const isOther = defect === 'Other Defects';
+        const isChecked = isOther ? currentOtherDefects.length > 0 : currentDefects.includes(defect);
+        
+        return `
             <label>
-                <input type="checkbox" value="${defect}" ${currentDefects.includes(defect) ? 'checked' : ''}>
+                <input type="checkbox" value="${defect}" ${isChecked ? 'checked' : ''}>
                 ${defect}
             </label>
-        `).join('');
-        
-        const modalBodyHTML = `
-            <div id="defect-selection-modal">
-                <input type="text" class="search-bar" placeholder="Cari tipe defect...">
-                <div class="options-container">${optionsHTML}</div>
-            </div>`;
-        
-        showModal({
-            title: `Pilih Defect untuk Pair #${tr.dataset.pairNumber}`,
-            body: modalBodyHTML,
-            confirmText: 'Simpan Pilihan',
-            onConfirm: () => {
-                const selected = [];
-                document.querySelectorAll('#defect-selection-modal input:checked').forEach(cb => selected.push(cb.value));
-                tr.dataset.defects = JSON.stringify(selected);
-                updateDefectTags(tr);
-                hideModal();
-            },
-        });
-        
-        document.querySelector('#defect-selection-modal .search-bar').addEventListener('input', (e) => {
-            const searchTerm = e.target.value.toLowerCase();
-            document.querySelectorAll('#defect-selection-modal label').forEach(label => {
-                const matches = label.textContent.trim().toLowerCase().includes(searchTerm);
-                label.style.display = matches ? 'flex' : 'none';
+        `;
+    }).join('');
+    
+    // Input field untuk Other Defects
+    const otherDefectsInputHTML = `
+        <div id="other-defects-input-container" style="display: ${currentOtherDefects.length > 0 ? 'block' : 'none'}; margin-top: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Detail Other Defects:</label>
+            <input type="text" id="other-defects-detail" class="search-bar" placeholder="Ketik detail defect (contoh: Hairy, Outsole Kotor, dll)" value="${currentOtherDefects.join(', ')}" style="margin-bottom: 0;">
+            <small style="display: block; margin-top: 5px; color: #666;">Pisahkan dengan koma jika lebih dari satu defect</small>
+        </div>
+    `;
+    
+    const modalBodyHTML = `
+        <div id="defect-selection-modal">
+            <input type="text" class="search-bar" placeholder="Cari tipe defect...">
+            <div class="options-container">${optionsHTML}</div>
+            ${otherDefectsInputHTML}
+        </div>`;
+    
+    showModal({
+        title: `Pilih Defect untuk Pair #${tr.dataset.pairNumber}`,
+        body: modalBodyHTML,
+        confirmText: 'Simpan Pilihan',
+        onConfirm: () => {
+            const selected = [];
+            const otherDefectDetails = [];
+            
+            document.querySelectorAll('#defect-selection-modal input[type="checkbox"]:checked').forEach(cb => {
+                if (cb.value === 'Other Defects') {
+                    // Ambil detail dari input manual
+                    const detailInput = document.getElementById('other-defects-detail').value.trim();
+                    if (detailInput) {
+                        // Split berdasarkan koma dan trim setiap item
+                        const details = detailInput.split(',').map(d => d.trim()).filter(d => d);
+                        otherDefectDetails.push(...details);
+                        selected.push(cb.value);
+                    }
+                } else {
+                    selected.push(cb.value);
+                }
             });
+            
+            tr.dataset.defects = JSON.stringify(selected);
+            tr.dataset.otherDefects = JSON.stringify(otherDefectDetails);
+            updateDefectTags(tr);
+            hideModal();
+        },
+    });
+    
+    // Event listener untuk search bar
+    document.querySelector('#defect-selection-modal .search-bar').addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        document.querySelectorAll('#defect-selection-modal label').forEach(label => {
+            const matches = label.textContent.trim().toLowerCase().includes(searchTerm);
+            label.style.display = matches ? 'flex' : 'none';
         });
-    }
+    });
+    
+    // Event listener untuk checkbox "Other Defects"
+    document.querySelectorAll('#defect-selection-modal input[type="checkbox"]').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+            if (e.target.value === 'Other Defects') {
+                const inputContainer = document.getElementById('other-defects-input-container');
+                inputContainer.style.display = e.target.checked ? 'block' : 'none';
+                
+                // Clear input jika unchecked
+                if (!e.target.checked) {
+                    document.getElementById('other-defects-detail').value = '';
+                }
+            }
+        });
+    });
+}
 
-    function updateDefectTags(tr) {
-        const wrapper = tr.querySelector('.defect-tags-wrapper');
-        const defects = JSON.parse(tr.dataset.defects || '[]');
-        wrapper.innerHTML = '';
-        
-        if (defects.length > 0) {
-            defects.forEach(defect => {
+function updateDefectTags(tr) {
+    const wrapper = tr.querySelector('.defect-tags-wrapper');
+    const defects = JSON.parse(tr.dataset.defects || '[]');
+    const otherDefects = JSON.parse(tr.dataset.otherDefects || '[]');
+    wrapper.innerHTML = '';
+    
+    if (defects.length > 0 || otherDefects.length > 0) {
+        // Tampilkan defect biasa
+        defects.forEach(defect => {
+            if (defect !== 'Other Defects') {
                 const tag = document.createElement('span');
                 tag.className = 'defect-tag';
                 tag.textContent = defect;
                 wrapper.appendChild(tag);
-            });
-        } else {
-            const placeholder = document.createElement('span');
-            placeholder.className = 'placeholder-text';
-            placeholder.textContent = tr.querySelector('.status-select').value === 'NG' ? 'Klik untuk pilih defect...' : "Pilih 'NG' untuk mengisi";
-            wrapper.appendChild(placeholder);
-        }
+            }
+        });
+        
+        // Tampilkan detail Other Defects
+        otherDefects.forEach(detail => {
+            const tag = document.createElement('span');
+            tag.className = 'defect-tag';
+            tag.textContent = detail;
+            tag.style.backgroundColor = '#ff9800'; // Warna berbeda untuk Other Defects
+            wrapper.appendChild(tag);
+        });
+    } else {
+        const placeholder = document.createElement('span');
+        placeholder.className = 'placeholder-text';
+        placeholder.textContent = tr.querySelector('.status-select').value === 'NG' ? 'Klik untuk pilih defect...' : "Pilih 'NG' untuk mengisi";
+        wrapper.appendChild(placeholder);
     }
+}
     
     // =========================================================================
     // 6. FUNGSI SIMPAN & MANAJEMEN DATA LOKAL
@@ -565,22 +629,22 @@ async function saveData() {
         };
 
         // Optimasi: Kumpulkan data dalam satu pass dengan error handling
-        const pairsData = Array.from(DOMElements.dataEntryBody.querySelectorAll('tr')).map(tr => {
-            try {
-                // Cache dataset untuk menghindari akses DOM berulang
-                const dataset = tr.dataset;
-                return {
-                    pairNumber: parseInt(dataset.pairNumber),
-                    status: tr.querySelector('.status-select').value,
-                    defects: dataset.defects ? JSON.parse(dataset.defects) : [],
-                    photos: dataset.photos ? JSON.parse(dataset.photos) : []
-                };
-            } catch (error) {
-                console.error(`Error parsing data for pair ${tr.dataset.pairNumber}:`, error);
-                alert(`Error pada pair ${tr.dataset.pairNumber}: ${error.message}. Data tidak dapat disimpan.`);
-                throw error;
-            }
-        });
+const pairsData = Array.from(DOMElements.dataEntryBody.querySelectorAll('tr')).map(tr => {
+    try {
+        const dataset = tr.dataset;
+        return {
+            pairNumber: parseInt(dataset.pairNumber),
+            status: tr.querySelector('.status-select').value,
+            defects: dataset.defects ? JSON.parse(dataset.defects) : [],
+            otherDefects: dataset.otherDefects ? JSON.parse(dataset.otherDefects) : [], // TAMBAHKAN BARIS INI
+            photos: dataset.photos ? JSON.parse(dataset.photos) : []
+        };
+    } catch (error) {
+        console.error(`Error parsing data for pair ${tr.dataset.pairNumber}:`, error);
+        alert(`Error pada pair ${tr.dataset.pairNumber}: ${error.message}. Data tidak dapat disimpan.`);
+        throw error;
+    }
+});
 
         const fileId = `lwt_${now.getTime()}`;
         const fileName = `LWT-${headerData.validationCategory || 'DATA'}-${dateStr}-${timeStr}`;
@@ -674,7 +738,6 @@ async function handleSavedFilesActions(e) {
 }
 
 async function handleDownload(fileData) {
-    // Tampilkan overlay untuk indikasi proses
     showLoadingOverlay();
 
     try {
@@ -685,7 +748,6 @@ async function handleDownload(fileData) {
         const excelHeaders = ['Date', 'Auditor', 'Validation Category', 'Style Number', 'Model', 'Line', 'Pair Number', 'OK/NG', 'Photos Attached', 'Defect type 1', 'Defect type 2', 'Defect type 3', 'Defect type 4', 'Defect type 5', 'Defect type 6', 'Defect type 7', 'Defect type 8', 'Defect type 9', 'Defect type 10'];
         const dataForSheet = [excelHeaders];
 
-        // Optimasi: Proses data dan gambar dalam satu loop
         const photoPromises = [];
         fileData.pairs.forEach(pair => {
             const photoNames = [];
@@ -693,11 +755,29 @@ async function handleDownload(fileData) {
                 pair.photos.forEach((photo, index) => {
                     const photoName = `Pair-${pair.pairNumber}-Foto-${index + 1}.jpg`;
                     photoNames.push(photoName);
-                    // Tambahkan gambar ke ZIP secara langsung tanpa split berulang
                     photoPromises.push({
                         name: photoName,
                         data: photo.data.startsWith('data:image') ? photo.data.split(',')[1] : photo.data
                     });
+                });
+            }
+
+            // MODIFIKASI BAGIAN INI - Gabungkan defect biasa dengan Other Defects
+            const allDefects = [];
+            
+            // Tambahkan defect biasa (yang bukan "Other Defects")
+            if (pair.defects && pair.defects.length > 0) {
+                pair.defects.forEach(defect => {
+                    if (defect !== 'Other Defects') {
+                        allDefects.push(defect);
+                    }
+                });
+            }
+            
+            // Tambahkan semua detail Other Defects sebagai "Other Defects"
+            if (pair.otherDefects && pair.otherDefects.length > 0) {
+                pair.otherDefects.forEach(() => {
+                    allDefects.push('Other Defects');
                 });
             }
 
@@ -711,37 +791,39 @@ async function handleDownload(fileData) {
                 pair.pairNumber,
                 pair.status,
                 photoNames.join(', '),
-                ...Array(10).fill('').map((_, i) => pair.defects[i] || '')
+                ...Array(10).fill('').map((_, i) => allDefects[i] || '')
             ];
 
             dataForSheet.push(row);
         });
 
-        // Tambahkan gambar ke ZIP secara paralel
         for (const { name, data } of photoPromises) {
             imgFolder.file(name, data, { base64: true });
         }
 
-        // ===== SHEET 1: LWT Report =====
         const ws1 = XLSX.utils.aoa_to_sheet(dataForSheet);
 
         // ===== SHEET 2: Summary =====
         const summaryData = generateSummaryData(fileData);
         const ws2 = XLSX.utils.aoa_to_sheet(summaryData);
 
-        // Buat Workbook dengan 2 sheet
+        // ===== SHEET 3: Other Defects =====
+        const otherDefectsData = generateOtherDefectsSheet(fileData);
+        const ws3 = XLSX.utils.aoa_to_sheet(otherDefectsData);
+
+        // Buat Workbook dengan 3 sheet
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws1, 'LWT Report');
         XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+        XLSX.utils.book_append_sheet(wb, ws3, 'Other Defects');
 
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         zip.file(`${fileData.name}.xlsx`, excelBuffer);
 
-        // Optimasi: Gunakan compression untuk ZIP
         const content = await zip.generateAsync({
             type: "blob",
             compression: "DEFLATE",
-            compressionOptions: { level: 6 } // Tingkat kompresi sedang
+            compressionOptions: { level: 6 }
         });
 
         const link = document.createElement("a");
@@ -754,140 +836,152 @@ async function handleDownload(fileData) {
         console.error('Gagal membuat file download:', error);
         alert(`Gagal membuat file download: ${error.message}`);
     } finally {
-        // Selalu sembunyikan overlay setelah selesai
         hideLoadingOverlay();
     }
 }
 
-    /**
-     * Generate Summary Sheet Data
-     */
+/**
+ * Generate Summary Sheet Data
+ */
 function generateSummaryData(fileData) {
-    const categories = {
-        'Contamination': [
-            'Staining/Contamination',
-            'Airbag Contamination (PU, Painting and cement)',
-            'Moldy'
-        ],
-        'Over-cement': [
-            'Over cement on Finish shoes',
-            'Over cement on Bottom unit'
-        ],
-        'Thread End': [
-            'Thread End'
-        ],
-        'Hairy': [
-            'Hairy',
-            'Hot Knife- Incomplete Hot Knife cutting'
-        ],
-        'Poor trimming outsole': [
-            'Cutting/trimming (rubber flash, over triming, component edge; hairy & fraying)',
-            'Rubber outsole quality (under cure, double skin, concave)'
-        ],
-        'Rocking': [
-            'Rocking (>2mm)',
-            'Twisted and Inverted stance (banana shoe)'
-        ],
-        'Stitching / Loose thread': [
-            'Stitching margins and SPI',
-            'Stitching (missing or gaps) - Broken / loose stitched',
-            'Inconsistent Stitching'
-        ],
-        'Scratch/tear/rip high buffing': [
-            'Toe spring',
-            'Lace loop/pull tab attachment - Broken lace loop/pull tab',
-            'Midsole - under/over side wall buffing',
-            'Over buffing',
-            'Broken Lace',
-            'Material tearing/damage'
-        ],
-        'Alignment L+R Symmetry': [
-            'Component alignment (visible or expose component)',
-            'Component alignment right versus left',
-            'Off center'
-        ],
-        'Interior (sockliner)': [
-            'Sockliner Placement - missed position on finished shoes'
-        ],
-        'Bond gap': [
-            'Rat hole',
-            'Bond Gap and Delamination'
-        ],
-        'Wrinkle/crease/mis-shape': [
-            'Midsole shape - less definition, deform and midsole texture',
-            'Toe stuffing (shape and placement inside the shoe)',
-            'Tongue shape',
-            'Wrinkling midsole',
-            'Wrinkling Upper',
-            'Heel, Collar and Toe shape',
-            'Emblishment; Quality and molded component definition'
-        ],
-        'Other': [
-            'Lacing - Finished shoe lacing',
-            'Perforation, laser, or 2nd cutting consistency',
-            'Wrapping paper',
-            'X-Ray',
-            'Binding or Folding Quality and consistency',
-            'Stockfit part Quality (Placement and fitting)',
-            'Inner box condition (crushed, wrinkled, color variation, etc.)',
-            'UPC label damaged',
-            'Metal contamination',
-            'No-sew Quality',
-            'Plate/shank damage',
-            'Size mis-match/ Wrong size/Wrong C/O label/Missing UPC label',
-            'Painting Quality',
-            'Color migration and color mismatch',
-            'Midsole Color/Burning',
-            'Outsole colors (dam spillover) - Color Bleeding',
-            'Yellowing on sole unit',
-            'Yellowing on upper'
-        ]
-    };
+    const defectList = [
+        'Airbag Defect',
+        'Left & Right not matching',
+        'Bondgap/Rat Hole',
+        'Delamination',
+        'Overcement',
+        'Contamination',
+        'Interior Defect',
+        'Accessories Defect',
+        'Color/Paint Migration, Bleeding',
+        'Color Mismatch',
+        'Paint Peeled off / Paint Surface Quality',
+        'Material Damaged',
+        'Punching holes bad quality',
+        'Overbuffing',
+        'Jump / Broken / Loose Stitching',
+        'Thread End',
+        'Stitching Margin',
+        'Off Center',
+        'Rocking',
+        'Toe Spring',
+        'Wrinkle or Deformed Bottom',
+        'Wrinkle or Deformed Upper',
+        'X-Ray',
+        'Other Defects',
+        'Yellowing'
+    ];
 
-        // Count defects per category
-        const categoryCounts = {};
-        Object.keys(categories).forEach(cat => categoryCounts[cat] = 0);
+    const defectCounts = {};
+    defectList.forEach(defect => defectCounts[defect] = 0);
 
-        fileData.pairs.forEach(pair => {
-            if (pair.defects && pair.defects.length > 0) {
-                pair.defects.forEach(defect => {
-                    for (const [category, defectList] of Object.entries(categories)) {
-                        if (defectList.includes(defect)) {
-                            categoryCounts[category]++;
-                            break;
-                        }
+    fileData.pairs.forEach(pair => {
+        if (pair.defects && pair.defects.length > 0) {
+            pair.defects.forEach(defect => {
+                if (defectList.includes(defect)) {
+                    // MODIFIKASI: Untuk Other Defects, hitung jumlah detail yang diinput
+                    if (defect === 'Other Defects' && pair.otherDefects && pair.otherDefects.length > 0) {
+                        defectCounts[defect] += pair.otherDefects.length; // UBAH DARI ++ MENJADI += length
+                    } else if (defect !== 'Other Defects') {
+                        defectCounts[defect]++;
                     }
-                });
-            }
-        });
+                }
+            });
+        }
+    });
 
-        const totalDefects = Object.values(categoryCounts).reduce((a, b) => a + b, 0);
+    const totalDefects = Object.values(defectCounts).reduce((a, b) => a + b, 0);
 
-        // Build summary array
-        const headers = ['Date', 'Style Number', 'Model', 'Contamination', 'Over-cement', 'Thread End', 'Hairy', 'Poor trimming outsole', 'Rocking', 'Stitching / Loose thread', 'Scratch/tear/rip high buffing', 'Alignment L+R Symmetry', 'Interior (sockliner)', 'Bond gap', 'Wrinkle/crease/mis-shape', 'Other', 'Total Defect'];
-        
-        const dataRow = [
-            fileData.header.date,
-            fileData.header.styleNumber,
-            fileData.header.model,
-            categoryCounts['Contamination'],
-            categoryCounts['Over-cement'],
-            categoryCounts['Thread End'],
-            categoryCounts['Hairy'],
-            categoryCounts['Poor trimming outsole'],
-            categoryCounts['Rocking'],
-            categoryCounts['Stitching / Loose thread'],
-            categoryCounts['Scratch/tear/rip high buffing'],
-            categoryCounts['Alignment L+R Symmetry'],
-            categoryCounts['Interior (sockliner)'],
-            categoryCounts['Bond gap'],
-            categoryCounts['Wrinkle/crease/mis-shape'],
-            categoryCounts['Other'],
-            totalDefects
-        ];
+    const headers = [
+        'Date',
+        'Style Number',
+        'Model',
+        'Airbag Defect',
+        'Left & Right not matching',
+        'Bondgap/Rat Hole',
+        'Delamination',
+        'Overcement',
+        'Contamination',
+        'Interior Defect',
+        'Accessories Defect',
+        'Color/Paint Migration, Bleeding',
+        'Color Mismatch',
+        'Paint Peeled off / Paint Surface Quality',
+        'Material Damaged',
+        'Punching holes bad quality',
+        'Overbuffing',
+        'Jump / Broken / Loose Stitching',
+        'Thread End',
+        'Stitching Margin',
+        'Off Center',
+        'Rocking',
+        'Toe Spring',
+        'Wrinkle or Deformed Bottom',
+        'Wrinkle or Deformed Upper',
+        'X-Ray',
+        'Other Defects',
+        'Yellowing',
+        'Total Defect'
+    ];
 
-        return [headers, dataRow];
+    const dataRow = [
+        fileData.header.date,
+        fileData.header.styleNumber,
+        fileData.header.model,
+        defectCounts['Airbag Defect'],
+        defectCounts['Left & Right not matching'],
+        defectCounts['Bondgap/Rat Hole'],
+        defectCounts['Delamination'],
+        defectCounts['Overcement'],
+        defectCounts['Contamination'],
+        defectCounts['Interior Defect'],
+        defectCounts['Accessories Defect'],
+        defectCounts['Color/Paint Migration, Bleeding'],
+        defectCounts['Color Mismatch'],
+        defectCounts['Paint Peeled off / Paint Surface Quality'],
+        defectCounts['Material Damaged'],
+        defectCounts['Punching holes bad quality'],
+        defectCounts['Overbuffing'],
+        defectCounts['Jump / Broken / Loose Stitching'],
+        defectCounts['Thread End'],
+        defectCounts['Stitching Margin'],
+        defectCounts['Off Center'],
+        defectCounts['Rocking'],
+        defectCounts['Toe Spring'],
+        defectCounts['Wrinkle or Deformed Bottom'],
+        defectCounts['Wrinkle or Deformed Upper'],
+        defectCounts['X-Ray'],
+        defectCounts['Other Defects'],
+        defectCounts['Yellowing'],
+        totalDefects
+    ];
+
+    return [headers, dataRow];
+}
+
+/**
+ * Generate Other Defects Sheet Data
+ */
+function generateOtherDefectsSheet(fileData) {
+    const headers = ['Pair Number', 'Defect detail for other'];
+    const rows = [headers];
+
+    fileData.pairs.forEach(pair => {
+        // Cek apakah pair ini memiliki Other Defects
+        if (pair.otherDefects && pair.otherDefects.length > 0) {
+            pair.otherDefects.forEach(detail => {
+                rows.push([pair.pairNumber, detail]);
+            });
+        }
+    });
+
+    // Jika tidak ada Other Defects, kembalikan sheet kosong dengan header saja
+    if (rows.length === 1) {
+        rows.push(['', 'No Other Defects recorded']);
     }
+
+    return rows;
+}
 
 async function renderSavedFilesOptimized(existingData, newFileData) {
     const listElement = DOMElements.savedFilesList;
